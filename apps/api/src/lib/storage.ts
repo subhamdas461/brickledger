@@ -3,6 +3,7 @@ import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
 import type { Readable } from 'node:stream';
 import type { Config } from '../config';
+import { AppError } from './errors';
 
 export interface StoredObject {
   body: Readable;
@@ -108,6 +109,30 @@ export class S3Storage implements Storage {
   }
 }
 
+/**
+ * Serverless hosts (Vercel) have a read-only, throwaway disk: refuse uploads with a clear message
+ * rather than failing on write or keeping files that vanish on the next cold start.
+ */
+export class UnavailableStorage implements Storage {
+  readonly driver = 'not-configured';
+
+  async put(): Promise<void> {
+    throw new AppError(
+      503,
+      'STORAGE_NOT_CONFIGURED',
+      'Photo and document uploads aren’t set up on this server yet. The owner needs to connect S3 or Cloudflare R2 storage (STORAGE_DRIVER=s3).',
+    );
+  }
+
+  async get(): Promise<StoredObject | null> {
+    return null;
+  }
+
+  async delete(): Promise<void> {}
+}
+
 export function createStorage(config: Config): Storage {
-  return config.STORAGE_DRIVER === 's3' ? new S3Storage(config) : new LocalStorage(config.UPLOAD_DIR);
+  if (config.STORAGE_DRIVER === 's3') return new S3Storage(config);
+  if (process.env.VERCEL) return new UnavailableStorage();
+  return new LocalStorage(config.UPLOAD_DIR);
 }

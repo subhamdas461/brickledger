@@ -261,5 +261,9 @@ export const ERROR_CODES = [
   'PAYLOAD_TOO_LARGE',
   'BAD_REQUEST',
   'INTERNAL',
+  /** File uploads need S3/R2 on this host (e.g. Vercel). */
+  'STORAGE_NOT_CONFIGURED',
+  /** The server is missing required settings (sent by the Vercel entry before the app starts). */
+  'SETUP_REQUIRED',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];

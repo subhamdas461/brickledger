@@ -153,7 +153,30 @@ Displayed prices live in [`plans.ts`](packages/shared/src/plans.ts) (INR and USD
 
 ## Deployment
 
-**Docker (single container + PostgreSQL):**
+### Vercel (website + API in one project)
+
+The repo is ready to import into Vercel as is. [`vercel.json`](vercel.json) runs [`scripts/vercel-build.mjs`](scripts/vercel-build.mjs), which uses Vercel's Build Output API to publish the web app as static files and the API as one Node.js function at `/api`. Both share one domain, so no CORS or cross-site cookie setup is needed.
+
+1. **Database:** create a PostgreSQL database (e.g. [Neon](https://neon.tech); choose a region near your users) and copy its **pooled** connection string.
+2. **File storage:** create an S3-compatible bucket (e.g. Cloudflare R2). The function's disk is read-only, so without it uploads are refused with a clear message.
+3. **Import:** Vercel → *Add New Project* → pick this repo. Keep the root directory and leave the build settings alone; `vercel.json` supplies them.
+4. **Environment variables** (Production):
+
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | the Neon connection string |
+| `JWT_SECRET` | 48+ random characters |
+| `STORAGE_DRIVER=s3`, `S3_BUCKET`, `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (`S3_REGION=auto` for R2) | your bucket |
+| `SMTP_URL`, `MAIL_FROM` | email provider (until then, emails go to the function logs) |
+| `APP_URL` | only once you add a custom domain, e.g. `https://yourdomain.com` (defaults to the project's production domain) |
+| `FUNCTION_REGION` | optional: run the API next to the database, e.g. `bom1` (Mumbai) for Neon `ap-south-1` |
+| `BILLING_PROVIDER` + keys | `mock` until Razorpay/Stripe is set up |
+
+5. **Deploy** (or redeploy after adding variables). Migrations run during **production** builds (`MIGRATE_ON_BUILD=true` also runs them for previews; avoid that if previews share the production database). Check `https://<your-project>.vercel.app/api/health`: it should say `"db":"pg"` and `"storage":"s3"`. Until `DATABASE_URL` and `JWT_SECRET` are set, the API answers with a `SETUP_REQUIRED` message saying what's missing.
+
+Differences from a long-running server: uploads are capped at 4 MB (Vercel's request limit is 4.5 MB; photos from the Android app are compressed well below that), rate limits are counted per function instance, and the first request after a quiet period takes a little longer (cold start). To build exactly what Vercel deploys: `node scripts/vercel-build.mjs` → `.vercel/output`.
+
+### Docker (single container + PostgreSQL)
 
 ```bash
 JWT_SECRET=$(openssl rand -base64 48) POSTGRES_PASSWORD=$(openssl rand -hex 16) \
@@ -162,9 +185,13 @@ APP_URL=https://app.yourdomain.com docker compose up -d --build
 
 The image builds the web app and serves it from the API with SPA routing, long-lived caching for hashed assets and a health check at `/api/health`. Migrations run on start. Put it behind any TLS reverse proxy (Caddy, Nginx, a cloud load balancer).
 
-**Any Node host** (Render, Railway, Fly.io, a VM): `npm ci && npm run build`, then run `node apps/api/dist/index.js` from `apps/api` with `SERVE_WEB=true` and the variables above. Or host `apps/web/dist` on a CDN and point `/api` at the server.
+### Any Node host
 
-**Android release signing:** create a keystore, then add `apps/android/keystore.properties` (git-ignored):
+Render, Railway, Fly.io or a VM: `npm ci && npm run build`, then run `node apps/api/dist/index.js` from `apps/api` with `SERVE_WEB=true` and the variables above. Or host `apps/web/dist` on a CDN and point `/api` at the server.
+
+### Android release
+
+**Signing:** create a keystore, then add `apps/android/keystore.properties` (git-ignored):
 
 ```properties
 storeFile=release.jks
@@ -173,7 +200,7 @@ keyAlias=brickledger
 keyPassword=...
 ```
 
-Set your production API and web URLs in [`app/build.gradle.kts`](apps/android/app/build.gradle.kts) (`DEFAULT_API_URL`, `WEB_URL`) and the invite deep-link host in [`AndroidManifest.xml`](apps/android/app/src/main/AndroidManifest.xml), then `./gradlew bundleRelease`.
+Set your live address once in [`apps/android/gradle.properties`](apps/android/gradle.properties), e.g. `brickledger.productionUrl=https://your-project.vercel.app`. Release builds use it for the API, the web links and the invite deep-link host. Then run `./gradlew bundleRelease`.
 
 ## Going to market - checklist
 

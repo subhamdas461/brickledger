@@ -25,9 +25,13 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
-        // Production endpoints - override per flavour/build type as needed.
-        buildConfigField("String", "DEFAULT_API_URL", "\"https://api.brickledger.app/\"")
-        buildConfigField("String", "WEB_URL", "\"https://brickledger.app\"")
+        // Production address (gradle.properties: brickledger.productionUrl). The website and the API
+        // are served from the same address (Vercel, or the Docker image with SERVE_WEB=true).
+        val productionUrl = ((project.findProperty("brickledger.productionUrl") as String?) ?: "https://brickledger.app").trimEnd('/')
+        buildConfigField("String", "DEFAULT_API_URL", "\"$productionUrl/\"")
+        buildConfigField("String", "WEB_URL", "\"$productionUrl\"")
+        // Invitation links (https://<host>/invite/<token>) open the app.
+        manifestPlaceholders["inviteHost"] = productionUrl.substringAfter("://").substringBefore("/").substringBefore(":")
         vectorDrawables { useSupportLibrary = true }
     }
 

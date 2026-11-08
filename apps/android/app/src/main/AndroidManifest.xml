@@ -35,12 +35,12 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Invitation links: https://brickledger.app/invite/<token> -->
+            <!-- Invitation links: https://<brickledger.productionUrl host>/invite/<token> -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="brickledger.app" android:pathPrefix="/invite/" />
+                <data android:scheme="https" android:host="${inviteHost}" android:pathPrefix="/invite/" />
             </intent-filter>
             <!-- Project backups opened ("Open with") or shared ("Share") from WhatsApp, Gmail, Drive, Files... -->
             <intent-filter>
