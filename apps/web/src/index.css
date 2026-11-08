@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Brand: warm brick orange */
+  --color-brand-50: #fff7ed;
+  --color-brand-100: #ffedd5;
+  --color-brand-200: #fed7aa;
+  --color-brand-300: #fdba74;
+  --color-brand-400: #fb923c;
+  --color-brand-500: #f97316;
+  --color-brand-600: #ea580c;
+  --color-brand-700: #c2410c;
+  --color-brand-800: #9a3412;
+  --color-brand-900: #7c2d12;
+  --color-brand-950: #431407;
+
+  --animate-fade-in: fade-in 160ms ease-out;
+  --animate-pop-in: pop-in 180ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes pop-in {
+    from { opacity: 0; transform: translateY(6px) scale(0.98); }
+    to { opacity: 1; transform: none; }
+  }
+}
+
+/*
+ * Chart tokens (data-viz reference palette, light + dark steps). Text never uses
+ * series colours; series identity is carried by marks + legends.
+ */
+:root {
+  color-scheme: light;
+  --surface: #ffffff;
+  --page: #fafaf9;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-other: #b7b5ad;
+  --meter-track: #dcebfc;
+  --grid: #e1e0d9;
+  --baseline: #c3c2b7;
+  --ink-muted: #898781;
+  --good: #0ca30c;
+  --good-text: #006300;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+}
+
+.dark {
+  color-scheme: dark;
+  --surface: #1c1917;
+  --page: #0f0e0d;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-other: #5c5a55;
+  --meter-track: #16304f;
+  --grid: #2c2c2a;
+  --baseline: #383835;
+  --ink-muted: #898781;
+  --good-text: #0ca30c;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  @apply bg-stone-50 text-stone-900 antialiased dark:bg-[#0f0e0d] dark:text-stone-100;
+  font-feature-settings: "cv11", "ss01";
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Native <dialog> modals */
+dialog::backdrop {
+  background: rgb(12 10 9 / 0.45);
+  backdrop-filter: blur(2px);
+}
+dialog[open] {
+  animation: var(--animate-pop-in);
+}
+
+/* Thin scrollbars in app panes */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(168 162 158 / 0.5) transparent;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white;
+  }
+}

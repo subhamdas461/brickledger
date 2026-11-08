@@ -1,0 +1,205 @@
+# BrickLedger
+
+**Cost, material, labour and progress tracking for house construction** - a complete, sellable SaaS product:
+
+| Part | Stack | Where |
+|---|---|---|
+| REST API + sync server | Node 22 · TypeScript · Fastify 5 · Drizzle ORM · PostgreSQL (PGlite for zero-install dev) | [`apps/api`](apps/api) |
+| Web app (marketing site, pricing, full dashboard) | React 19 · Vite 8 · Tailwind CSS 4 · TanStack Query | [`apps/web`](apps/web) |
+| Android app (offline-first) | Kotlin 2.2 · Jetpack Compose · Material 3 · Room · WorkManager · Retrofit | [`apps/android`](apps/android) |
+| Shared domain model | Vocabularies, plans, templates, zod schemas, API types | [`packages/shared`](packages/shared) |
+
+<p>
+<img src="docs/screenshots/web-dashboard.png" width="64%" alt="Web dashboard">
+<img src="docs/screenshots/android-dashboard.png" width="24%" alt="Android dashboard">
+</p>
+
+---
+
+## What it tracks
+
+Everything a house build needs, for owners, contractors and the family watching:
+
+- **Budget vs actual**: total budget split across 14 standard construction heads (permits, design, foundation, RCC, masonry, labour, roofing, doors & windows, electrical, plumbing, flooring, painting, fixtures, contingency). Planned, paid, due and remaining per head, with over-budget alerts.
+- **Expenses & bills**: amount, vendor, category, phase, payment mode (cash/UPI/bank/cheque/card), quantity × rate, GST, reference numbers, receipts (photo/PDF), *paid* vs *bill due* with due dates and overdue alerts.
+- **Vendors & contractors**: contract amount, paid, due and **balance to pay**, call from the app, payment history.
+- **Materials & stock**: deliveries and consumption, stock in hand, average rate, purchase value, procurement progress vs estimate, **low-stock alerts**. Receiving stock can create the matching expense in the same step.
+- **Labour**: workers and trades, **one-tap daily attendance** (present / half day / absent + overtime), earned wages, payments, advances and balances.
+- **Schedule**: 14 phases from approvals to handover with planned and actual dates, progress and late flags (Gantt view on web).
+- **Tasks**: Kanban board (web) and checklist (Android) with priorities, assignees and due dates.
+- **Site diary**: daily work done, weather, labour count, problems and photos.
+- **Issues & snags**: defects with severity, owner, fix-by date and photos.
+- **Funds**: savings, home-loan tranches, family support or client payments, giving **cash in hand** vs bills due.
+- **Documents & photos**: drawings, permits, agreements and warranties with **expiry reminders**.
+- **Reports**: professional 2-page **PDF cost report**, 11 **CSV exports**, monthly spending, cost per sq ft.
+- **Team & audit trail**: invite by email or shareable link (WhatsApp-friendly) as *Manager*, *Contributor* or *Viewer*. Every change is logged with who and when.
+
+## What makes it sellable
+
+- **Multi-tenant SaaS**: workspaces → projects → members with roles; workspace owners/admins manage everything; clients/family get read-only access.
+- **Subscription plans** (configurable in [`packages/shared/src/plans.ts`](packages/shared/src/plans.ts)): *Starter* (free, 1 project), *Pro* and *Business*, with a **14-day Pro trial**, server-enforced limits (projects, people, storage) and feature gates (PDF reports, white-label reports).
+- **Payments**: pluggable billing with **Stripe** (global) and **Razorpay** (India: UPI, cards, netbanking) - hosted checkout, signature-verified idempotent webhooks, cancel/portal. A `mock` provider upgrades instantly for demos.
+- **Marketing site**: landing page, pricing with monthly/yearly toggle, FAQ, terms & privacy templates.
+- **Onboarding**: "Explore a sample project" builds a realistic, fully-populated villa build in one click (doesn't count against plan limits).
+- **Offline Android app** with background sync, daily reminders and photo capture - the feature site users care about most. It also works **with no account and no internet at all** (see [Offline mode](#offline-mode-no-account-no-internet)).
+- **Multi-currency** (20 currencies, lakh/crore formatting for INR) and light/dark themes.
+
+<p>
+<img src="docs/screenshots/web-landing.png" width="49%" alt="Landing page">
+<img src="docs/screenshots/pdf-report.png" width="24%" alt="PDF report">
+<img src="docs/screenshots/android-attendance.png" width="24%" alt="Android attendance">
+</p>
+
+---
+
+## Quick start (local development)
+
+Requirements: **Node 22.12+**. No database install needed - the API uses an embedded PostgreSQL (PGlite) until you set `DATABASE_URL`.
+
+```bash
+npm install
+npm run seed:demo        # demo login: demo@brickledger.app / demo12345 (with a sample project)
+npm run dev              # API on http://localhost:4000, web on http://localhost:5173
+```
+
+Open http://localhost:5173. Emails (password reset, invites) are printed to the API log until you configure SMTP; upgrades use the `mock` billing provider.
+
+Useful scripts (from the repo root):
+
+| Command | What it does |
+|---|---|
+| `npm test` | 27 API integration tests (auth & token rotation, permissions, plan limits, sync, billing webhooks, uploads, PDF/CSV) |
+| `npm run typecheck` | TypeScript checks for every workspace |
+| `npm run build` | Production build: web (`apps/web/dist`) + bundled API (`apps/api/dist`) |
+| `npm start` | Run the built API (`SERVE_WEB=true` also serves the web app) |
+| `npm run db:generate` | Generate a SQL migration after editing [`schema.ts`](apps/api/src/db/schema.ts) |
+
+### Android
+
+Open [`apps/android`](apps/android) in Android Studio (or use the Gradle wrapper; JDK 17+, Android SDK 36):
+
+```bash
+cd apps/android
+./gradlew installDebug                                   # emulator → talks to http://10.0.2.2:4000
+./gradlew installDebug -Pbrickledger.apiUrl=http://192.168.1.20:4000/   # a phone on your Wi-Fi
+./gradlew assembleStaging                                # release-minified QA build, debug-signed
+./gradlew bundleRelease                                  # Play Store bundle (see "Release signing")
+```
+
+The server address can also be changed on the sign-in screen (server icon). Release builds only allow HTTPS. To try the app without any server, tap **Use offline on this phone** on the sign-in screen.
+
+---
+
+## Architecture
+
+```
+ Android (Room = source of truth)          Web (TanStack Query cache)
+   │  push changes (client UUIDs)              │  REST + httpOnly refresh cookie
+   │  pull changes since cursor                │
+   ▼                                           ▼
+ ┌──────────────────────── Fastify API (/api/v1) ────────────────────────┐
+ │ auth (JWT 15 min + rotating refresh tokens, reuse detection)          │
+ │ access control (workspace role → project role)  · plan limits        │
+ │ resources (generic CRUD + soft delete + activity log)  · sync         │
+ │ analytics (SQL aggregates) · PDF (PDFKit) · CSV · files (local/S3)    │
+ │ billing (Stripe / Razorpay / mock)                                    │
+ └──────────────────────────────┬────────────────────────────────────────┘
+                                ▼
+                     PostgreSQL (Drizzle migrations)
+```
+
+**Offline sync.** Every write to a project table takes a value from a global sequence (`server_seq`). The Android app writes to Room first (instant UI), marks rows dirty, and a WorkManager job (needs network) pushes them as idempotent mutations keyed by client-generated UUIDs. It then pulls everything with `server_seq > cursor`, including soft-deleted tombstones. Edits made while a push is in flight are protected by a local revision counter. Two phones marking the same worker on the same day are merged by the server. Photos are compressed on the phone and uploaded once their parent record exists on the server. Details: [`docs/API.md`](docs/API.md#offline-sync-used-by-the-android-app).
+
+**Optimisations.** Dashboard and report numbers are computed with SQL aggregates on both sides (Postgres on the server, SQLite on the phone). The web app is code-split per page (entry bundle ~80 KB gzipped, pages 1-4 KB; zod stays out of the browser). The release APK is **2.4 MB** (R8 + resource shrinking) and loads images through an authenticated, disk-cached client. Responses are gzip-compressed, and file URLs are signed and cacheable for an hour.
+
+**Local database upgrades.** The Room schema is versioned and exported to [`app/schemas`](apps/android/app/schemas) (version 2 added phone-only projects through an automatic migration). There is no destructive fallback, so every future schema change needs a migration - an upgrade must never drop unsynced or phone-only data.
+
+**Security.** scrypt password hashing, short-lived JWTs, rotating refresh tokens with family revocation on reuse, httpOnly SameSite cookies on web, Keystore-encrypted tokens on Android, strict CSP/HSTS via Helmet, rate-limited auth, zod validation on every input, upload type allow-list (no SVG/HTML), sandboxed file responses, CSV formula-injection guarding, and server-side role checks on every route (contributors can only delete their own entries).
+
+---
+
+## Offline mode (no account, no internet)
+
+The Android app doesn't need the server to be useful. Its Room database holds every project on the phone, and the dashboard, budget, labour and stock numbers are computed on the device, so the server is only needed for accounts, sharing with a team and the web app.
+
+| Situation | What happens |
+|---|---|
+| No account | **Use offline on this phone** on the sign-in screen. Projects are created on the phone (with the same budget heads, phases and materials templates) and stay there. |
+| Signed in, no internet | Existing projects keep working and sync when the connection returns. A new project is saved on the phone and marked **On this phone**. |
+| Session expires or is revoked | The app asks you to sign in again; nothing on the phone is deleted, and unsynced changes are pushed after sign-in. If a *different* person signs in, the previous user's cached cloud projects are removed (phone-only projects stay). |
+
+- **Reports on the phone**: for phone-only projects, the PDF cost report and the CSV exports are generated on the device.
+- **Backups**: a project's More tab → **Back up to a file** writes a zip (`backup.json` plus the photos stored on the phone) to share to Google Drive, WhatsApp or email. On the other phone, tap the file and choose **Open with → BrickLedger** (or **Share → BrickLedger**). A confirmation shows the project and what it contains, then it's added as a new phone-only project - no account needed, even on a phone that has never been set up. The file can also be picked from the sign-in screen (**Restore a backup from another phone**), an empty project list or Settings. Every id is regenerated, so a restored copy never collides with the original. Restored entries are queued for upload, so **Move to the cloud** sends all of them. Damaged, half-downloaded or foreign files are rejected with a specific message before anything is changed.
+- **Move to the cloud**: after signing in, More → **Move to the cloud** creates the project on the server, re-keys every local row to the server's id and uploads the entries and photos through the normal sync. The app then opens the cloud project.
+
+Why not run the API and PostgreSQL on the phone itself? That would add a Node runtime and a second database to the app (tens of MB, battery drain, Android's background limits) and still couldn't share data with family, the contractor or the web app. The phone already has the database and the logic; offline mode removes the need for an account.
+
+## Configuration
+
+All server settings are environment variables; every one is documented in [`apps/api/.env.example`](apps/api/.env.example). For production you must set:
+
+| Variable | Why |
+|---|---|
+| `JWT_SECRET` | 32+ random characters (`openssl rand -base64 48`) |
+| `DATABASE_URL` | PostgreSQL connection string (Neon, Supabase, RDS, Cloud SQL, or the bundled compose file) |
+| `APP_URL`, `CORS_ORIGINS` | Your public web address (used in emails, invite links, payment redirects) |
+| `SMTP_URL`, `MAIL_FROM` | Transactional email (password resets, invitations) |
+| `STORAGE_DRIVER=s3` + `S3_*` | Photos/documents on S3, Cloudflare R2 or MinIO (container disks are ephemeral) |
+| `BILLING_PROVIDER` + keys | `stripe` or `razorpay` (see below) |
+
+**Stripe:** create Pro/Business × monthly/yearly recurring prices, put their IDs in `STRIPE_PRICE_*`, and add a webhook to `https://<domain>/api/v1/billing/webhooks/stripe` for `checkout.session.completed`, `customer.subscription.*` and `invoice.payment_failed`.
+**Razorpay:** create four subscription plans (`RAZORPAY_PLAN_*`) and a webhook to `https://<domain>/api/v1/billing/webhooks/razorpay` for `subscription.*` events.
+Displayed prices live in [`plans.ts`](packages/shared/src/plans.ts) (INR and USD); set `PRICING_CURRENCY`.
+
+## Deployment
+
+**Docker (single container + PostgreSQL):**
+
+```bash
+JWT_SECRET=$(openssl rand -base64 48) POSTGRES_PASSWORD=$(openssl rand -hex 16) \
+APP_URL=https://app.yourdomain.com docker compose up -d --build
+```
+
+The image builds the web app and serves it from the API with SPA routing, long-lived caching for hashed assets and a health check at `/api/health`. Migrations run on start. Put it behind any TLS reverse proxy (Caddy, Nginx, a cloud load balancer).
+
+**Any Node host** (Render, Railway, Fly.io, a VM): `npm ci && npm run build`, then run `node apps/api/dist/index.js` from `apps/api` with `SERVE_WEB=true` and the variables above. Or host `apps/web/dist` on a CDN and point `/api` at the server.
+
+**Android release signing:** create a keystore, then add `apps/android/keystore.properties` (git-ignored):
+
+```properties
+storeFile=release.jks
+storePassword=...
+keyAlias=brickledger
+keyPassword=...
+```
+
+Set your production API and web URLs in [`app/build.gradle.kts`](apps/android/app/build.gradle.kts) (`DEFAULT_API_URL`, `WEB_URL`) and the invite deep-link host in [`AndroidManifest.xml`](apps/android/app/src/main/AndroidManifest.xml), then `./gradlew bundleRelease`.
+
+## Going to market - checklist
+
+- [ ] **Brand:** the name lives in `APP_NAME` ([`constants.ts`](packages/shared/src/constants.ts)), `app_name` ([`strings.xml`](apps/android/app/src/main/res/values/strings.xml)), the logo SVG/vector drawables and `applicationId` (`com.brickledger.app`). Check trademark availability before launch.
+- [ ] **Legal:** the Terms and Privacy pages are templates - have them reviewed for your jurisdiction (e.g. India's DPDP Act, GDPR).
+- [ ] **Pricing:** adjust plans/limits in `plans.ts` and create the matching Stripe/Razorpay prices.
+- [ ] **Play Store:** privacy policy URL, Data safety form (account info, photos, financial info you enter; encrypted in transit; deletion available), account-deletion link (`/app/settings` → Delete account), screenshots from `docs/screenshots`. Subscriptions are sold on the web; the app links to it.
+- [ ] **Operations:** managed Postgres with daily backups, S3/R2 bucket, SMTP provider, error monitoring, uptime check on `/api/health`.
+
+## Project structure
+
+```
+apps/
+  api/        Fastify server: src/modules/{auth,account,orgs,billing,projects,resources,sync,files,members,analytics,reports}
+              src/db/schema.ts (Drizzle) · drizzle/ (SQL migrations) · test/ (Vitest + in-memory PGlite)
+  web/        React app: src/pages/{marketing,auth,app,project} · src/components (UI kit, charts, forms)
+  android/    Compose app: data/ (Room, Retrofit, sync engine, workers, backups, on-device reports) · ui/ (theme, components, screens)
+packages/
+  shared/     Vocabularies, plans, templates, zod schemas, API types, formatting
+docs/         API reference, screenshots
+```
+
+## Known limitations / next steps
+
+- Phone-only projects exist only on that phone until they're backed up or moved to the cloud; there are no automatic backups yet (a scheduled export to Google Drive would be the next step). They also can't be shared with other people until moved to the cloud.
+- Backups of *cloud* projects include every entry but only the photos still on the phone (photos already uploaded stay on the server).
+- Wage history is calculated with each worker's *current* daily wage.
+- Conflict resolution is last-write-wins per record; field-level merging isn't implemented.
+- Not yet built: push notifications (FCM), in-app billing on Android (plans are bought on the web), Hindi/regional-language UI, and an iOS app.

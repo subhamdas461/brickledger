@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand">#EA580C</color>
+    <color name="brand_dark">#C2410C</color>
+    <color name="splash_background">#FFFBF7</color>
+    <color name="icon_background">#EA580C</color>
+</resources>

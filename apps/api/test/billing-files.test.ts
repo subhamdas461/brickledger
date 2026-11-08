@@ -1,0 +1,109 @@
+import { createHmac } from 'node:crypto';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { loadConfig } from '../src/config';
+import { RazorpayProvider, StripeProvider } from '../src/modules/billing/providers';
+import { applyBillingEvent } from '../src/modules/billing/service';
+import { buildTestApp, call, createProject, multipart, registerUser, type TestApp, type TestUser } from './helpers';
+
+let t: TestApp;
+let owner: TestUser;
+
+beforeAll(async () => {
+  t = await buildTestApp();
+  owner = await registerUser(t.app, 'Owner');
+});
+afterAll(async () => t.close());
+
+describe('billing', () => {
+  it('lists plans publicly', async () => {
+    const plans = await call(t.app, { method: 'GET', url: '/api/v1/billing/plans' });
+    expect(plans.plans.map((p: any) => p.id)).toEqual(['free', 'pro', 'business']);
+    expect(plans.trialDays).toBe(14);
+  });
+
+  it('upgrades instantly with the mock provider and cancels back to free', async () => {
+    const orgId = owner.orgs[0]!.id;
+    const res = await call(t.app, { method: 'POST', url: `/api/v1/orgs/${orgId}/billing/checkout`, headers: owner.headers, payload: { plan: 'business', interval: 'year' } });
+    expect(res.url).toContain('checkout=success');
+    const org = await call(t.app, { method: 'GET', url: `/api/v1/orgs/${orgId}`, headers: owner.headers });
+    expect(org).toMatchObject({ plan: 'business', effectivePlan: 'business', planStatus: 'active', planInterval: 'year' });
+    expect(org.limits.projects).toBeNull();
+    const canceled = await call(t.app, { method: 'POST', url: `/api/v1/orgs/${orgId}/billing/cancel`, headers: owner.headers });
+    expect(canceled.effectivePlan).toBe('free');
+  });
+
+  it('verifies Stripe webhook signatures and applies events idempotently', async () => {
+    const config = loadConfig({
+      NODE_ENV: 'test',
+      STRIPE_SECRET_KEY: 'sk_test_x',
+      STRIPE_WEBHOOK_SECRET: 'whsec_test',
+      STRIPE_PRICE_PRO_MONTH: 'price_pro_m',
+    });
+    const stripe = new StripeProvider(config);
+    const orgId = owner.orgs[0]!.id;
+    const body = JSON.stringify({
+      id: 'evt_1',
+      type: 'customer.subscription.updated',
+      data: { object: { id: 'sub_1', customer: 'cus_1', status: 'active', metadata: { orgId }, items: { data: [{ price: { id: 'price_pro_m' }, current_period_end: 2_000_000_000 }] } } },
+    });
+    const ts = Math.floor(Date.now() / 1000);
+    const sig = createHmac('sha256', 'whsec_test').update(`${ts}.${body}`).digest('hex');
+    const event = stripe.parseWebhook(body, { 'stripe-signature': `t=${ts},v1=${sig}` });
+    expect(event).toMatchObject({ orgId, plan: 'pro', interval: 'month', status: 'active', subscriptionId: 'sub_1' });
+    expect(() => stripe.parseWebhook(body, { 'stripe-signature': `t=${ts},v1=deadbeef` })).toThrow();
+
+    expect(await applyBillingEvent(t.database.db, 'stripe', event)).toBe('applied');
+    expect(await applyBillingEvent(t.database.db, 'stripe', event)).toBe('duplicate');
+    const org = await call(t.app, { method: 'GET', url: `/api/v1/orgs/${orgId}`, headers: owner.headers });
+    expect(org).toMatchObject({ effectivePlan: 'pro', hasSubscription: true, billingProvider: 'stripe' });
+  });
+
+  it('verifies Razorpay webhook signatures', () => {
+    const config = loadConfig({ NODE_ENV: 'test', RAZORPAY_KEY_ID: 'rzp_test', RAZORPAY_KEY_SECRET: 'secret', RAZORPAY_WEBHOOK_SECRET: 'rzp_whsec' });
+    const rzp = new RazorpayProvider(config);
+    const body = JSON.stringify({
+      event: 'subscription.charged',
+      created_at: 1,
+      payload: { subscription: { entity: { id: 'sub_R1', customer_id: 'cust_1', current_end: 2_000_000_000, notes: { orgId: 'o1', plan: 'business', interval: 'month' } } } },
+    });
+    const sig = createHmac('sha256', 'rzp_whsec').update(body).digest('hex');
+    expect(rzp.parseWebhook(body, { 'x-razorpay-signature': sig })).toMatchObject({ orgId: 'o1', plan: 'business', status: 'active' });
+    expect(() => rzp.parseWebhook(body, { 'x-razorpay-signature': 'bad' })).toThrow();
+  });
+});
+
+describe('files', () => {
+  // 1x1 transparent PNG
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
+
+  it('uploads, serves via signed URL or bearer token, and deletes', async () => {
+    const project = await createProject(t.app, owner, { useTemplates: false });
+    const form = multipart({ name: 'Plinth photo', entityType: 'log' }, { name: 'plinth.png', type: 'image/png', content: png });
+    const file = await call(t.app, { method: 'POST', url: `/api/v1/projects/${project.id}/files`, headers: { ...owner.headers, ...form.headers }, payload: form.payload, expect: 201 });
+    expect(file).toMatchObject({ name: 'Plinth photo', category: 'photo', mimeType: 'image/png', sizeBytes: png.length });
+    expect(file.storageKey).toBeUndefined();
+
+    const signed = await t.app.inject({ method: 'GET', url: file.url });
+    expect(signed.statusCode).toBe(200);
+    expect(signed.rawPayload.equals(png)).toBe(true);
+    const bearer = await t.app.inject({ method: 'GET', url: `/api/v1/files/${file.id}/content`, headers: owner.headers });
+    expect(bearer.statusCode).toBe(200);
+    const anon = await t.app.inject({ method: 'GET', url: `/api/v1/files/${file.id}/content` });
+    expect(anon.statusCode).toBe(401);
+    const tampered = await t.app.inject({ method: 'GET', url: file.url.replace(/sig=[^&]+/, 'sig=abc') });
+    expect(tampered.statusCode).toBe(401);
+
+    await call(t.app, { method: 'DELETE', url: `/api/v1/projects/${project.id}/files/${file.id}`, headers: owner.headers });
+    expect((await t.app.inject({ method: 'GET', url: file.url })).statusCode).toBe(404);
+  });
+
+  it('rejects unsafe file types', async () => {
+    const project = await createProject(t.app, owner, { useTemplates: false, name: 'Another' }).catch(async () => {
+      const list = await call(t.app, { method: 'GET', url: '/api/v1/projects', headers: owner.headers });
+      return list[0];
+    });
+    const form = multipart({}, { name: 'evil.html', type: 'text/html', content: Buffer.from('<script>alert(1)</script>') });
+    const res = await t.app.inject({ method: 'POST', url: `/api/v1/projects/${project.id}/files`, headers: { ...owner.headers, ...form.headers }, payload: form.payload });
+    expect(res.statusCode).toBe(400);
+  });
+});

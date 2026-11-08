@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/.data
+**/uploads
+**/*.log
+.git
+apps/android
+**/.env
+**/.env.*
+!**/.env.example
