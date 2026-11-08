@@ -68,12 +68,36 @@ function copyInto(rel) {
 for (const rel of fileList) copyInto(rel);
 for (const rel of extras) copyInto(rel);
 
+// A CommonJS front door: every Node.js launcher can `require` it, whereas loading the ES-module API
+// with require() depends on the Node version. It imports the API, and if loading fails it answers
+// with the reason (also logged) instead of a bare FUNCTION_INVOCATION_FAILED.
+writeFileSync(
+  join(fnDir, 'index.cjs'),
+  `'use strict';
+let loaded;
+module.exports = async function handler(req, res) {
+  try {
+    loaded ??= import('./${entry}').then((m) => m.default);
+    return await (await loaded)(req, res);
+  } catch (err) {
+    loaded = undefined;
+    console.error('[vercel] API failed to load', err);
+    if (res.headersSent) return res.end();
+    res.statusCode = 500;
+    res.setHeader('content-type', 'application/json; charset=utf-8');
+    res.setHeader('cache-control', 'no-store');
+    res.end(JSON.stringify({ error: { code: 'LOAD_FAILED', message: String((err && err.message) || err).slice(0, 500) } }));
+  }
+};
+`,
+);
+
 writeFileSync(
   join(fnDir, '.vc-config.json'),
   JSON.stringify(
     {
       runtime: 'nodejs22.x',
-      handler: entry,
+      handler: 'index.cjs',
       launcherType: 'Nodejs',
       shouldAddHelpers: false,
       supportsResponseStreaming: true,
