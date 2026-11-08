@@ -7,7 +7,7 @@
 //
 // Run by Vercel (see vercel.json). Locally: `node scripts/vercel-build.mjs`.
 import { execSync } from 'node:child_process';
-import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +25,22 @@ console.log('\n› Building the web app');
 run('npm run build --workspace @brickledger/web');
 console.log('\n› Building the API');
 run('npm run build --workspace @brickledger/api');
+
+// ------------------------------------------------------------------ published Android app
+// The /download page links to this file. If it's missing, a request for it would otherwise be
+// answered with something else, so stop here: a failed build keeps the last good deployment live.
+const apkManifest = join(root, 'apps/web/public/apk/android.json');
+if (existsSync(apkManifest)) {
+  const { size, versionName } = JSON.parse(readFileSync(apkManifest, 'utf8'));
+  const apk = join(root, 'apps/web/public/apk/brickledger.apk');
+  const actual = existsSync(apk) ? statSync(apk).size : null;
+  if (actual !== size) {
+    throw new Error(
+      `apps/web/public/apk/brickledger.apk should be ${size} bytes (Android ${versionName}) but is ${actual === null ? 'missing' : `${actual} bytes`}. ` +
+        'Run `npm run release:android` and commit the whole apps/web/public/apk folder.',
+    );
+  }
+}
 
 // ------------------------------------------------------------------ database migrations
 // Production deploys only by default: preview builds may point at the same database.
@@ -154,6 +170,8 @@ writeFileSync(
         { src: '^/apk/android\\.json$', headers: { 'cache-control': 'no-cache' }, continue: true },
         { src: '^/(.*)$', headers: webSecurity, continue: true },
         { handle: 'filesystem' },
+        // Missing files must be a real 404, not the SPA's HTML under a file's name.
+        { src: '^/(?:apk|assets)/.*$', status: 404 },
         // Client-side routes (/app/projects/...) load the SPA.
         { src: '^/(.*)$', dest: '/index.html' },
       ],

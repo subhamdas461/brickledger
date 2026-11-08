@@ -36,4 +36,6 @@ apps/android/captures/
 apps/android/*.jks
 apps/android/keystore.properties
 *.apk
+# ...except the release published on the website's /download page (npm run release:android).
+!apps/web/public/apk/brickledger.apk
 *.aab
