@@ -11,6 +11,7 @@ function page<T extends Record<string, ComponentType<any>>>(loader: () => Promis
 const Landing = page(() => import('./pages/marketing/Landing'), 'Landing');
 const PricingPage = page(() => import('./pages/marketing/Landing'), 'PricingPage');
 const Legal = page(() => import('./pages/marketing/Legal'), 'Legal');
+const DownloadPage = page(() => import('./pages/marketing/Download'), 'DownloadPage');
 const Login = page(() => import('./pages/auth/AuthPages'), 'Login');
 const Register = page(() => import('./pages/auth/AuthPages'), 'Register');
 const ForgotPassword = page(() => import('./pages/auth/AuthPages'), 'ForgotPassword');
@@ -43,6 +44,7 @@ const router = createBrowserRouter([
     children: [
       { path: '/', element: <Landing /> },
       { path: '/pricing', element: <PricingPage /> },
+      { path: '/download', element: <DownloadPage /> },
       { path: '/terms', element: <Legal kind="terms" /> },
       { path: '/privacy', element: <Legal kind="privacy" /> },
     ],

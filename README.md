@@ -41,7 +41,7 @@ Everything a house build needs, for owners, contractors and the family watching:
 - **Payments**: pluggable billing with **Stripe** (global) and **Razorpay** (India: UPI, cards, netbanking) - hosted checkout, signature-verified idempotent webhooks, cancel/portal. A `mock` provider upgrades instantly for demos.
 - **Marketing site**: landing page, pricing with monthly/yearly toggle, FAQ, terms & privacy templates.
 - **Onboarding**: "Explore a sample project" builds a realistic, fully-populated villa build in one click (doesn't count against plan limits).
-- **Offline Android app** with background sync, daily reminders and photo capture - the feature site users care about most. It also works **with no account and no internet at all** (see [Offline mode](#offline-mode-no-account-no-internet)).
+- **Offline Android app** with background sync, daily reminders and photo capture - the feature site users care about most. It also works **with no account and no internet at all** (see [Offline mode](#offline-mode-no-account-no-internet)). Visitors can download it directly from the website's `/download` page, with install steps and a QR code.
 - **Multi-currency** (20 currencies, lakh/crore formatting for INR) and light/dark themes.
 
 <p>
@@ -191,7 +191,12 @@ Render, Railway, Fly.io or a VM: `npm ci && npm run build`, then run `node apps/
 
 ### Android release
 
-**Signing:** create a keystore, then add `apps/android/keystore.properties` (git-ignored):
+**Signing:** create a keystore once, then add `apps/android/keystore.properties`. Both files are git-ignored:
+
+```bash
+cd apps/android
+keytool -genkeypair -keystore release.jks -storetype PKCS12 -alias brickledger -keyalg RSA -keysize 3072 -validity 10000
+```
 
 ```properties
 storeFile=release.jks
@@ -200,7 +205,20 @@ keyAlias=brickledger
 keyPassword=...
 ```
 
-Set your live address once in [`apps/android/gradle.properties`](apps/android/gradle.properties), e.g. `brickledger.productionUrl=https://your-project.vercel.app`. Release builds use it for the API, the web links and the invite deep-link host. Then run `./gradlew bundleRelease`.
+**Back up `release.jks` and `keystore.properties` somewhere safe** (e.g. a password manager). Android only installs an update over an app signed with the same key, so losing them means every user has to uninstall and reinstall.
+
+Set your live address once in [`apps/android/gradle.properties`](apps/android/gradle.properties), e.g. `brickledger.productionUrl=https://your-project.vercel.app`. Release builds use it for the API, the web links and the invite deep-link host.
+
+**Publish on your website** (the `/download` page):
+
+```bash
+npm run release:android        # builds the APK into apps/web/public/apk/ with its version info and QR code
+git add apps/web/public/apk && git commit -m "Android 1.0.1" && git push
+```
+
+For each new release, first raise `versionCode` and `versionName` in [`app/build.gradle.kts`](apps/android/app/build.gradle.kts); phones only update to a higher `versionCode`. The page reads `apk/android.json`, so it shows the new version as soon as it's deployed. The app doesn't check for updates itself yet, so tell users when there's a new version.
+
+**Google Play:** `./gradlew bundleRelease`, then upload the `.aab` in Play Console.
 
 ## Going to market - checklist
 

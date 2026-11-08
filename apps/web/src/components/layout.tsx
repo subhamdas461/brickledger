@@ -21,6 +21,7 @@ import {
   Plus,
   Receipt,
   Settings,
+  Smartphone,
   Sparkles,
   Store,
   Sun,
@@ -225,6 +226,7 @@ export function UserMenu({ compact }: { compact?: boolean }) {
       items={[
         { label: 'Account settings', icon: <UserRound />, onSelect: () => navigate('/app/settings') },
         { label: 'Plan & billing', icon: <CreditCard />, onSelect: () => navigate('/app/settings?tab=billing') },
+        { label: 'Get the Android app', icon: <Smartphone />, onSelect: () => navigate('/download') },
         { label: `Theme: ${pref}`, icon: <ThemeIcon />, onSelect: () => setPref(nextTheme) },
         {
           label: 'Sign out',
@@ -350,6 +352,9 @@ export function PublicLayout() {
             <a href="/#features" className="hover:text-stone-900 dark:hover:text-white">Features</a>
             <Link to="/pricing" className="hover:text-stone-900 dark:hover:text-white">Pricing</Link>
             <a href="/#faq" className="hover:text-stone-900 dark:hover:text-white">FAQ</a>
+            <Link to="/download" className="flex items-center gap-1.5 hover:text-stone-900 dark:hover:text-white">
+              <Smartphone className="size-4" /> Download app
+            </Link>
           </nav>
           <div className="ml-auto hidden items-center gap-2 md:flex">
             {status === 'authenticated' ? (
@@ -371,6 +376,9 @@ export function PublicLayout() {
               <a href="/#features" className="rounded-lg px-3 py-2 hover:bg-stone-100 dark:hover:bg-stone-800">Features</a>
               <Link to="/pricing" className="rounded-lg px-3 py-2 hover:bg-stone-100 dark:hover:bg-stone-800">Pricing</Link>
               <a href="/#faq" className="rounded-lg px-3 py-2 hover:bg-stone-100 dark:hover:bg-stone-800">FAQ</a>
+              <Link to="/download" className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-stone-100 dark:hover:bg-stone-800">
+                <Smartphone className="size-4" /> Download Android app
+              </Link>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 {status === 'authenticated' ? (
                   <ButtonLink to="/app" className="col-span-2">Open app</ButtonLink>
@@ -401,6 +409,7 @@ export function PublicLayout() {
             <ul className="mt-3 space-y-2 text-stone-500 dark:text-stone-400">
               <li><a href="/#features" className="hover:text-stone-900 dark:hover:text-white">Features</a></li>
               <li><Link to="/pricing" className="hover:text-stone-900 dark:hover:text-white">Pricing</Link></li>
+              <li><Link to="/download" className="hover:text-stone-900 dark:hover:text-white">Android app</Link></li>
               <li><Link to="/register" className="hover:text-stone-900 dark:hover:text-white">Create account</Link></li>
             </ul>
           </div>

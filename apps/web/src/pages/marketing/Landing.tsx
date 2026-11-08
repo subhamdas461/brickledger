@@ -5,6 +5,7 @@ import {
   CalendarRange,
   ChartColumn,
   CircleCheck,
+  Download,
   FileDown,
   HardHat,
   Package,
@@ -193,6 +194,12 @@ export function Landing() {
                 </li>
               ))}
             </ul>
+            <div className="mt-8 flex flex-wrap items-center gap-4">
+              <ButtonLink to="/download" size="lg" icon={<Download className="size-5" />}>
+                Download for Android
+              </ButtonLink>
+              <span className="text-sm text-stone-400">Free · Android 8.0 or newer</span>
+            </div>
           </div>
           <div className="mx-auto w-64 rounded-[40px] border-[10px] border-stone-700 bg-stone-50 p-3 text-stone-900 shadow-2xl">
             <p className="px-1 text-xs font-semibold text-stone-500">Attendance · Today</p>

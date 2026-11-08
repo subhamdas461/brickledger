@@ -140,6 +140,18 @@ writeFileSync(
         // API first. The original path also travels as __path, in case the rewrite replaces req.url.
         { src: '^/api(?:/(.*))?$', dest: '/api?__path=$1' },
         { src: '^/assets/(.*)$', headers: { 'cache-control': 'public, max-age=31536000, immutable' }, continue: true },
+        // Android app download (published by `npm run release:android`). Same file name for every
+        // release, so keep caches short; the version manifest is always revalidated.
+        {
+          src: '^/apk/brickledger\\.apk$',
+          headers: {
+            'content-type': 'application/vnd.android.package-archive',
+            'content-disposition': 'attachment; filename="BrickLedger.apk"',
+            'cache-control': 'public, max-age=300',
+          },
+          continue: true,
+        },
+        { src: '^/apk/android\\.json$', headers: { 'cache-control': 'no-cache' }, continue: true },
         { src: '^/(.*)$', headers: webSecurity, continue: true },
         { handle: 'filesystem' },
         // Client-side routes (/app/projects/...) load the SPA.

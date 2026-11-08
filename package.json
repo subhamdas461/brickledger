@@ -18,12 +18,14 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "db:generate": "npm run db:generate --workspace @brickledger/api",
     "db:migrate": "npm run db:migrate --workspace @brickledger/api",
-    "seed:demo": "npm run seed:demo --workspace @brickledger/api"
+    "seed:demo": "npm run seed:demo --workspace @brickledger/api",
+    "release:android": "node scripts/publish-android.mjs"
   },
   "engines": {
     "node": ">=22.12.0"
   },
   "devDependencies": {
-    "@vercel/nft": "1.11.0"
+    "@vercel/nft": "1.11.0",
+    "qrcode": "1.5.4"
   }
 }
