@@ -6,7 +6,6 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
-import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyError, type FastifyInstance, type FastifyRequest } from 'fastify';
 import type { Config } from './config';
 import type { AppContext } from './context';
@@ -158,6 +157,9 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
   const serveWeb = config.SERVE_WEB && existsSync(resolve(webRoot, 'index.html'));
   if (config.SERVE_WEB && !serveWeb) app.log.warn(`SERVE_WEB is on but ${webRoot}/index.html was not found - build the web app first.`);
   if (serveWeb) {
+    // Loaded only when serving the web app: it require()s an ES-module dependency, which older
+    // Node.js runtimes (e.g. Vercel's) can't load - and on Vercel the web app is served as static files.
+    const { default: fastifyStatic } = await import('@fastify/static');
     await app.register(fastifyStatic, {
       root: webRoot,
       wildcard: false,
