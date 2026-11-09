@@ -347,8 +347,18 @@ export async function adminRoutes(app: FastifyInstance) {
       { key: 'database', level: dbUp ? 'ok' : 'error', title: 'Database', message: dbUp ? `Connected (${database.driver}), ${latencyMs} ms` : 'Not reachable' },
       database.driver === 'pglite' ? { key: 'database-kind', level: 'warning', title: 'Local database', message: 'Using the built-in database. Set DATABASE_URL to PostgreSQL for real use.' } : null,
       storage.driver === 'not-configured'
-        ? { key: 'storage', level: 'warning', title: 'File storage', message: 'Not set up, so photo and document uploads are refused. Connect S3 or Cloudflare R2.' }
-        : { key: 'storage', level: 'ok', title: 'File storage', message: storage.driver === 's3' ? 'S3-compatible storage connected' : 'Saved on this server’s disk' },
+        ? { key: 'storage', level: 'warning', title: 'File storage', message: 'Not set up, so photo and document uploads are refused. Connect a private Vercel Blob store, or S3 or Cloudflare R2.' }
+        : {
+            key: 'storage',
+            level: 'ok',
+            title: 'File storage',
+            message:
+              storage.driver === 'vercel-blob'
+                ? 'Vercel Blob connected. The free plan includes 1 GB and 2,000 uploads a month; over that, files can’t be reached until the 30-day period ends.'
+                : storage.driver === 's3'
+                  ? 'S3-compatible storage connected'
+                  : 'Saved on this server’s disk',
+          },
       emailOn
         ? { key: 'email', level: 'ok', title: 'Email', message: 'Connected' }
         : { key: 'email', level: 'warning', title: 'Email', message: 'Not set up: password resets and invites aren’t emailed. Add SMTP_URL, or use “Reset link” on an account.' },

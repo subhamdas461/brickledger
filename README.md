@@ -68,7 +68,7 @@ Useful scripts (from the repo root):
 
 | Command | What it does |
 |---|---|
-| `npm test` | 46 API integration tests (auth & token rotation, permissions, plan limits, sync, billing webhooks, uploads, PDF/CSV, admin panel, analytics) |
+| `npm test` | 49 API integration tests (auth & token rotation, permissions, plan limits, sync, billing webhooks, uploads, PDF/CSV, admin panel, analytics) |
 | `npm run typecheck` | TypeScript checks for every workspace |
 | `npm run build` | Production build: web (`apps/web/dist`) + bundled API (`apps/api/dist`) |
 | `npm start` | Run the built API (`SERVE_WEB=true` also serves the web app) |
@@ -139,6 +139,7 @@ Super admins get a panel at `/admin` (in the account menu once signed in) coveri
 npm run admin -- grant you@example.com
 npm run admin -- list
 npm run admin -- revoke you@example.com
+npm run admin -- reset-link you@example.com   # forgot your password? prints a one-hour link
 ```
 
 **Safeguards.** Non-admins get a plain 404, and the flag is re-read on every admin request. Super admins can't be banned or deleted from the panel, and you can't act on yourself. A ban takes effect within 30 seconds on every server instance, even for tokens already issued. Deleting requires typing the account's email. The panel shows project names and counts, not project contents.
@@ -185,7 +186,9 @@ Displayed prices live in [`plans.ts`](packages/shared/src/plans.ts) (INR and USD
 The repo is ready to import into Vercel as is. [`vercel.json`](vercel.json) runs [`scripts/vercel-build.mjs`](scripts/vercel-build.mjs), which uses Vercel's Build Output API to publish the web app as static files and the API as one Node.js function at `/api`. Both share one domain, so no CORS or cross-site cookie setup is needed.
 
 1. **Database:** create a PostgreSQL database (e.g. [Neon](https://neon.tech); choose a region near your users) and copy its **pooled** connection string.
-2. **File storage:** create an S3-compatible bucket (e.g. Cloudflare R2). The function's disk is read-only, so without it uploads are refused with a clear message.
+2. **File storage** (the function's disk is read-only, so without this, uploads are refused with a clear message). Pick one:
+   - **Vercel Blob:** project → *Storage* → *Create Storage* → *Blob*, set access to **Private**, and connect it with **Add a read-write token env var to this connection** ticked. Nothing else to set. The Hobby plan includes 1 GB, 10 GB of transfer and 2,000 uploads a month; over a limit, files can't be reached until the 30-day period ends.
+   - **An S3-compatible bucket**, e.g. Cloudflare R2, using the variables below. It has a larger free allowance and doesn't tie you to Vercel.
 3. **Import:** Vercel → *Add New Project* → pick this repo. Keep the root directory and leave the build settings alone; `vercel.json` supplies them.
 4. **Environment variables** (Production):
 
@@ -193,7 +196,7 @@ The repo is ready to import into Vercel as is. [`vercel.json`](vercel.json) runs
 |---|---|
 | `DATABASE_URL` | the Neon connection string |
 | `JWT_SECRET` | 48+ random characters |
-| `STORAGE_DRIVER=s3`, `S3_BUCKET`, `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (`S3_REGION=auto` for R2) | your bucket |
+| `STORAGE_DRIVER=s3`, `S3_BUCKET`, `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (`S3_REGION=auto` for R2) | your bucket, if you chose S3/R2 rather than Vercel Blob |
 | `SMTP_URL`, `MAIL_FROM` | email provider (until then, emails go to the function logs) |
 | `APP_URL` | only once you add a custom domain, e.g. `https://yourdomain.com` (defaults to the project's production domain) |
 | `FUNCTION_REGION` | optional: run the API next to the database, e.g. `bom1` (Mumbai) for Neon `ap-south-1` |

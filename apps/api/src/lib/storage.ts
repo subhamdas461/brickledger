@@ -1,7 +1,8 @@
 import { createReadStream } from 'node:fs';
 import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
-import type { Readable } from 'node:stream';
+import { Readable } from 'node:stream';
+import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import type { Config } from '../config';
 import { AppError } from './errors';
 
@@ -110,6 +111,46 @@ export class S3Storage implements Storage {
 }
 
 /**
+ * Vercel Blob, in a store created as Private: files are never publicly reachable, only through this
+ * API's permission checks. The token is passed explicitly because it works on any host, whereas the
+ * SDK's default (OIDC) depends on how a function was deployed.
+ */
+export class VercelBlobStorage implements Storage {
+  readonly driver = 'vercel-blob';
+  private sdk: Promise<typeof import('@vercel/blob')> | null = null;
+
+  constructor(private readonly token: string) {
+    if (!token) throw new Error('BLOB_READ_WRITE_TOKEN is required when STORAGE_DRIVER=vercel-blob');
+  }
+
+  private load() {
+    this.sdk ??= import('@vercel/blob');
+    return this.sdk;
+  }
+
+  async put(key: string, data: Buffer, contentType: string): Promise<void> {
+    assertKey(key);
+    const { put } = await this.load();
+    // Re-sending a file keeps its key, so uploads stay idempotent.
+    await put(key, data, { access: 'private', contentType, addRandomSuffix: false, allowOverwrite: true, token: this.token });
+  }
+
+  async get(key: string): Promise<StoredObject | null> {
+    assertKey(key);
+    const { get } = await this.load();
+    const result = await get(key, { access: 'private', token: this.token });
+    if (!result) return null;
+    return { body: Readable.fromWeb(result.stream as WebReadableStream<Uint8Array>), size: result.blob.size ?? undefined };
+  }
+
+  async delete(key: string): Promise<void> {
+    assertKey(key);
+    const { del } = await this.load();
+    await del(key, { token: this.token });
+  }
+}
+
+/**
  * Serverless hosts (Vercel) have a read-only, throwaway disk: refuse uploads with a clear message
  * rather than failing on write or keeping files that vanish on the next cold start.
  */
@@ -120,7 +161,7 @@ export class UnavailableStorage implements Storage {
     throw new AppError(
       503,
       'STORAGE_NOT_CONFIGURED',
-      'Photo and document uploads aren’t set up on this server yet. The owner needs to connect S3 or Cloudflare R2 storage (STORAGE_DRIVER=s3).',
+      'Photo and document uploads aren’t set up on this server yet. The owner needs to connect a Vercel Blob store, or S3 or Cloudflare R2 storage.',
     );
   }
 
@@ -133,6 +174,8 @@ export class UnavailableStorage implements Storage {
 
 export function createStorage(config: Config): Storage {
   if (config.STORAGE_DRIVER === 's3') return new S3Storage(config);
-  if (process.env.VERCEL) return new UnavailableStorage();
+  if (config.STORAGE_DRIVER === 'vercel-blob') return new VercelBlobStorage(config.BLOB_READ_WRITE_TOKEN);
+  // On Vercel, connecting a Blob store with a read-write token is all it takes.
+  if (process.env.VERCEL) return config.BLOB_READ_WRITE_TOKEN ? new VercelBlobStorage(config.BLOB_READ_WRITE_TOKEN) : new UnavailableStorage();
   return new LocalStorage(config.UPLOAD_DIR);
 }

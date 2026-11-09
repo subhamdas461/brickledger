@@ -38,7 +38,9 @@ const envSchema = z.object({
   ACCESS_TOKEN_TTL_MIN: z.coerce.number().int().default(15),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().default(60),
 
-  STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  STORAGE_DRIVER: z.enum(['local', 's3', 'vercel-blob']).default('local'),
+  /** From a private Vercel Blob store. On Vercel, setting this is enough to turn Blob storage on. */
+  BLOB_READ_WRITE_TOKEN: z.string().default(''),
   UPLOAD_DIR: z.string().default('./uploads'),
   MAX_UPLOAD_MB: z.coerce.number().default(15),
   S3_BUCKET: z.string().default(''),

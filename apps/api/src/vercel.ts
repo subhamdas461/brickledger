@@ -32,6 +32,9 @@ async function start(): Promise<FastifyInstance> {
   if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
     throw new SetupError('JWT_SECRET is not set. Add a random value of at least 32 characters in Vercel → Settings → Environment Variables, then redeploy.');
   }
+  if (process.env.STORAGE_DRIVER === 'vercel-blob' && !process.env.BLOB_READ_WRITE_TOKEN) {
+    throw new SetupError('BLOB_READ_WRITE_TOKEN is not set. Connect your Blob store with "Add a read-write token env var to this connection" ticked, then redeploy.');
+  }
   const site = siteUrl();
   const env = process.env;
   const config = loadConfig({
