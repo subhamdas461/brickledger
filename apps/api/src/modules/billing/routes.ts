@@ -10,6 +10,7 @@ export async function billingPublicRoutes(app: FastifyInstance) {
   app.get('/billing/plans', async (): Promise<PlansResponse> => ({
     currency: config.PRICING_CURRENCY,
     provider: billing.name,
+    testMode: Boolean(billing.testMode),
     trialDays: TRIAL_DAYS,
     plans: PLAN_ORDER.map((id) => PLANS[id]),
   }));
@@ -23,7 +24,7 @@ export async function billingPublicRoutes(app: FastifyInstance) {
       }
       const raw = typeof req.body === 'string' ? req.body : '';
       const event = billing.parseWebhook(raw, req.headers);
-      const outcome = await applyBillingEvent(db, billing.name, event);
+      const outcome = await applyBillingEvent(db, billing.name, event, billing.cancelNow?.bind(billing));
       req.log.info({ type: event.type, outcome }, 'billing webhook');
       reply.code(200);
       return { received: true };

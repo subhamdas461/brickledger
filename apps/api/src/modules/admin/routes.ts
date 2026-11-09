@@ -77,7 +77,7 @@ export async function adminRoutes(app: FastifyInstance) {
   }
 
   // ------------------------------------------------------------------ stats
-  app.get('/overview', async () => buildOverview(db, config.STATS_TIMEZONE, config.PRICING_CURRENCY));
+  app.get('/overview', async () => buildOverview(db, config.STATS_TIMEZONE, config.PRICING_CURRENCY, Boolean(billing.testMode)));
 
   app.get<{ Querystring: { days?: string } }>('/engagement', async (req) => {
     const days = Number(req.query.days);
@@ -364,6 +364,8 @@ export async function adminRoutes(app: FastifyInstance) {
         : { key: 'email', level: 'warning', title: 'Email', message: 'Not set up: password resets and invites aren’t emailed. Add SMTP_URL, or use “Reset link” on an account.' },
       billing.name === 'mock'
         ? { key: 'billing', level: 'info', title: 'Payments', message: 'Test mode: upgrades are free. Set BILLING_PROVIDER to take real payments.' }
+        : billing.testMode
+          ? { key: 'billing', level: 'info', title: 'Payments', message: `${billing.name} test mode: no real money moves, and revenue figures come from test payments. Switch to live keys to take real payments.` }
         : { key: 'billing', level: 'ok', title: 'Payments', message: `${billing.name} connected` },
     ].filter(Boolean);
     return {

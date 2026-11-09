@@ -31,10 +31,14 @@ export interface BillingEvent {
 
 export interface BillingProvider {
   readonly name: ProviderName;
+  /** Using the provider's test keys: no real money moves. */
+  readonly testMode?: boolean;
   createCheckout(params: CheckoutParams): Promise<{ url: string }>;
   /** Self-service portal (Stripe). Providers without one return null. */
   createPortal(org: { billingCustomerId: string | null }, returnUrl: string): Promise<{ url: string } | null>;
   cancel(org: { billingSubscriptionId: string | null }): Promise<void>;
+  /** Ends a subscription immediately, because a newer one for the same workspace replaces it. */
+  cancelNow?(subscriptionId: string): Promise<void>;
   /** Verifies the signature and normalises the payload. Throws on a bad signature. */
   parseWebhook(rawBody: string, headers: Record<string, string | string[] | undefined>): BillingEvent;
 }
@@ -225,6 +229,9 @@ export class StripeProvider implements BillingProvider {
 
 export class RazorpayProvider implements BillingProvider {
   readonly name = 'razorpay' as const;
+  get testMode() {
+    return this.config.RAZORPAY_KEY_ID.startsWith('rzp_test_');
+  }
   constructor(private readonly config: Config) {
     if (!config.RAZORPAY_KEY_ID || !config.RAZORPAY_KEY_SECRET) {
       throw new Error('RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are required when BILLING_PROVIDER=razorpay');
@@ -273,6 +280,16 @@ export class RazorpayProvider implements BillingProvider {
   async cancel(org: { billingSubscriptionId: string | null }) {
     if (!org.billingSubscriptionId) return;
     await this.call(`subscriptions/${org.billingSubscriptionId}/cancel`, { cancel_at_cycle_end: 1 });
+  }
+
+  async cancelNow(subscriptionId: string) {
+    try {
+      await this.call(`subscriptions/${subscriptionId}/cancel`, { cancel_at_cycle_end: 0 });
+    } catch (err) {
+      // Already over, or made with other keys (e.g. test before going live): nothing left to stop.
+      if (err instanceof AppError && /already|expired|completed|cancelled|does not exist/i.test(err.message)) return;
+      throw err;
+    }
   }
 
   parseWebhook(rawBody: string, headers: Record<string, string | string[] | undefined>): BillingEvent {

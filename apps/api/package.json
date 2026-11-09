@@ -13,7 +13,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/scripts/migrate.ts",
     "seed:demo": "tsx src/scripts/seed-demo.ts",
-    "admin": "tsx src/scripts/admin.ts"
+    "admin": "tsx src/scripts/admin.ts",
+    "razorpay:setup": "tsx src/scripts/razorpay-setup.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1164.0",

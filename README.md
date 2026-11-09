@@ -68,7 +68,7 @@ Useful scripts (from the repo root):
 
 | Command | What it does |
 |---|---|
-| `npm test` | 49 API integration tests (auth & token rotation, permissions, plan limits, sync, billing webhooks, uploads, PDF/CSV, admin panel, analytics) |
+| `npm test` | 60 API integration tests (auth & token rotation, permissions, plan limits, sync, billing webhooks, uploads, PDF/CSV, admin panel, analytics) |
 | `npm run typecheck` | TypeScript checks for every workspace |
 | `npm run build` | Production build: web (`apps/web/dist`) + bundled API (`apps/api/dist`) |
 | `npm start` | Run the built API (`SERVE_WEB=true` also serves the web app) |
@@ -176,7 +176,11 @@ All server settings are environment variables; every one is documented in [`apps
 | `BILLING_PROVIDER` + keys | `stripe` or `razorpay` (see below) |
 
 **Stripe:** create Pro/Business × monthly/yearly recurring prices, put their IDs in `STRIPE_PRICE_*`, and add a webhook to `https://<domain>/api/v1/billing/webhooks/stripe` for `checkout.session.completed`, `customer.subscription.*` and `invoice.payment_failed`.
-**Razorpay:** create four subscription plans (`RAZORPAY_PLAN_*`) and a webhook to `https://<domain>/api/v1/billing/webhooks/razorpay` for `subscription.*` events.
+**Razorpay:** `npm run razorpay:setup` asks for your API keys, creates the four plans from the prices in `plans.ts`, and writes every setting to a git-ignored `.env.razorpay-test` to import into Vercel (`--live` does the same for live keys, in `.env.razorpay-live`). It prints the webhook to add in the Razorpay dashboard. Safe to run again, and a changed price creates a new plan rather than changing what subscribers pay.
+
+To try a test payment: choose a plan under Settings → Plan & billing. Razorpay's page opens in a new tab, and the site shows the card to use. Test card: `4718 6091 0820 4366`, any future expiry, any CVV. To test renewals and failures, use **Charge this now** on the subscription in the dashboard; test card tokens only last 3 days. Razorpay's hosted page doesn't return people to your site, so the plan page watches for the webhook and updates by itself.
+
+Switching plan creates a new subscription, and the old one is cancelled as soon as the new one is paid for, with no refund of unused days. Before going live, test workspaces keep their test plan, so reset them from Admin → Workspaces.
 Displayed prices live in [`plans.ts`](packages/shared/src/plans.ts) (INR and USD); set `PRICING_CURRENCY`.
 
 ## Deployment

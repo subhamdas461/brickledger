@@ -72,6 +72,8 @@ export interface OrgMember {
 export interface PlansResponse {
   currency: PricingCurrency;
   provider: string;
+  /** True on the payment provider's test keys: no real money moves. */
+  testMode?: boolean;
   trialDays: number;
   plans: PlanDef[];
 }
@@ -501,7 +503,7 @@ export interface AdminOverview {
   generatedAt: string;
   users: { total: number; newToday: number; new7d: number; new30d: number; active1d: number; active7d: number; active30d: number; banned: number };
   workspaces: { total: number; free: number; pro: number; business: number; trialing: number; paying: number; comped: number };
-  revenue: { currency: string; mrr: number; paying: number };
+  revenue: { currency: string; mrr: number; paying: number; testMode: boolean };
   usage: { projects: number; demoProjects: number; expenses: number; workers: number; tasks: number; diaryEntries: number; issues: number; files: number; storageBytes: number };
   web: { viewsToday: number; visitorsToday: number; views30d: number; visitors30d: number; avgSeconds30d: number };
   app: { downloads: number; downloads30d: number; devices: number; activeDevices7d: number };

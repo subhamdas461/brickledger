@@ -17,7 +17,7 @@ export function Overview() {
         <Stat label="Active this week" value={count(users.active7d)} note={`${count(users.active1d)} today · ${count(users.active30d)} this month`} icon={<UserPlus className="size-4" />} />
         <Stat label="App downloads" value={count(app.downloads)} note={`${count(app.downloads30d)} in 30 days`} icon={<Download className="size-4" />} />
         <Stat label="Website visitors today" value={count(web.visitorsToday)} note={`${count(web.viewsToday)} pages opened`} icon={<Eye className="size-4" />} />
-        <Stat label="Monthly revenue" value={formatMoney(revenue.mrr, revenue.currency)} note={`${count(revenue.paying)} paying, at list price`} icon={<Wallet className="size-4" />} />
+        <Stat label="Monthly revenue" value={formatMoney(revenue.mrr, revenue.currency)} note={revenue.testMode ? `${count(revenue.paying)} on test payments` : `${count(revenue.paying)} paying, at list price`} icon={<Wallet className="size-4" />} />
         <Stat label="Workspaces" value={count(workspaces.total)} note={`${count(workspaces.trialing)} on trial`} icon={<Building2 className="size-4" />} />
         <Stat label="Time on site" value={duration(web.avgSeconds30d)} note="per daily visitor, 30 days" icon={<Timer className="size-4" />} />
         <Stat label="Banned accounts" value={count(users.banned)} note={users.banned ? 'See Accounts' : 'None'} icon={<ShieldBan className="size-4" />} />

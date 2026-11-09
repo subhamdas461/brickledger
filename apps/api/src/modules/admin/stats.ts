@@ -40,7 +40,7 @@ function ranking(rows: CounterRow[], metric: string, limit = 12): AdminRank[] {
   return [...byName].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, limit);
 }
 
-export async function buildOverview(db: DB, tz: string, currency: PricingCurrency): Promise<AdminOverview> {
+export async function buildOverview(db: DB, tz: string, currency: PricingCurrency, testMode: boolean): Promise<AdminOverview> {
   const days = lastDays(30, tz);
   const from = days[0]!;
   const today = days[days.length - 1]!;
@@ -119,7 +119,7 @@ export async function buildOverview(db: DB, tz: string, currency: PricingCurrenc
     generatedAt: new Date().toISOString(),
     users: u as AdminOverview['users'],
     workspaces,
-    revenue: { currency, mrr: Math.round(mrr), paying: workspaces.paying },
+    revenue: { currency, mrr: Math.round(mrr), paying: workspaces.paying, testMode },
     usage: usage as AdminOverview['usage'],
     web: {
       viewsToday: total(rows, 'page_view', today),

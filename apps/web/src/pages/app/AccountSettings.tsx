@@ -1,6 +1,6 @@
 import { CURRENCIES, OrgRoles, PLANS, formatBytes, formatDate, type BillingInterval, type OrgDetail, type OrgMember, type PlanId } from '@brickledger/shared/web';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CreditCard, ExternalLink, Trash } from 'lucide-react';
+import { CreditCard, ExternalLink, LoaderCircle, Trash } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { Meter } from '../../components/charts';
@@ -14,7 +14,7 @@ import { Avatar, Badge, Card, CardHeader, PageHeader, Spinner } from '../../comp
 import { useToast } from '../../components/ui/toast';
 import { api, errorMessage, setAccessToken } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { keys, useOrg } from '../../lib/queries';
+import { keys, useOrg, usePlans } from '../../lib/queries';
 
 type Tab = 'profile' | 'workspace' | 'billing';
 
@@ -266,7 +266,9 @@ function Billing() {
   const toast = useToast();
   const qc = useQueryClient();
   const org = useOrg(currentOrg?.id);
+  const plans = usePlans();
   const [busyPlan, setBusyPlan] = useState<string | null>(null);
+  const [awaitingPayment, setAwaitingPayment] = useState<{ plan: Exclude<PlanId, 'free'>; interval: BillingInterval; until: number } | null>(null);
   const { confirm, dialog } = useConfirm();
   const isAdmin = currentOrg?.role === 'owner' || currentOrg?.role === 'admin';
 
@@ -281,17 +283,53 @@ function Billing() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Razorpay's payment page can't send people back here, so watch for the plan changing instead.
+  useEffect(() => {
+    if (!awaitingPayment) return;
+    const d = org.data;
+    if (d && d.effectivePlan === awaitingPayment.plan && d.planInterval === awaitingPayment.interval && d.planStatus === 'active') {
+      setAwaitingPayment(null);
+      toast.success(`Payment received. You’re on ${PLANS[awaitingPayment.plan].name} now.`);
+      void reloadMe();
+      return;
+    }
+    const poll = setInterval(() => {
+      if (Date.now() > awaitingPayment.until) {
+        setAwaitingPayment(null);
+        toast.info('Still no payment confirmation. If you paid, your plan will update here shortly.');
+      } else {
+        void qc.invalidateQueries({ queryKey: keys.org(currentOrg?.id ?? '') });
+      }
+    }, 4000);
+    return () => clearInterval(poll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [awaitingPayment, org.data]);
+
   if (!currentOrg || org.isLoading || !org.data) return <Spinner />;
   const o: OrgDetail = org.data;
   const plan = PLANS[o.effectivePlan];
   const trialDays = o.planStatus === 'trialing' && o.trialEndsAt ? Math.max(0, Math.ceil((Date.parse(o.trialEndsAt) - Date.now()) / 86_400_000)) : null;
 
   async function choose(planId: Exclude<PlanId, 'free'>, interval: BillingInterval) {
+    if (plans.data?.provider === 'razorpay' && o.hasSubscription && o.planStatus === 'active' && o.effectivePlan !== 'free' && o.billingProvider !== 'mock') {
+      const ok = await confirm('Switch plan?', 'Your current subscription stops as soon as you’ve paid for the new one, so you’re never billed for both. Unused days on the current plan aren’t refunded.', 'Continue');
+      if (!ok) return;
+    }
+    // Opened right away: browsers block new tabs opened after waiting for a server reply.
+    const paymentTab = plans.data?.provider === 'razorpay' ? window.open('', '_blank') : null;
     setBusyPlan(planId);
     try {
       const { url } = await api<{ url: string }>(`/orgs/${o.id}/billing/checkout`, { method: 'POST', body: { plan: planId, interval } });
-      window.location.assign(url);
+      if (paymentTab) {
+        paymentTab.opener = null;
+        paymentTab.location.href = url;
+        setAwaitingPayment({ plan: planId, interval, until: Date.now() + 15 * 60_000 });
+        setBusyPlan(null);
+      } else {
+        window.location.assign(url);
+      }
     } catch (err) {
+      paymentTab?.close();
       toast.error(errorMessage(err));
       setBusyPlan(null);
     }
@@ -359,6 +397,20 @@ function Billing() {
           <UsageRow label="Storage" used={o.usage.storageMb} limit={o.limits.storageMb} format={(mb) => formatBytes(mb * 1024 * 1024)} />
         </div>
       </Card>
+      {awaitingPayment && (
+        <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
+          <p className="flex items-center gap-2.5">
+            <LoaderCircle className="size-4 shrink-0 animate-spin" />
+            Finish paying for {PLANS[awaitingPayment.plan].name} in the other tab. This page updates by itself once it goes through.
+          </p>
+          <Button variant="secondary" size="sm" onClick={() => setAwaitingPayment(null)}>Stop waiting</Button>
+        </div>
+      )}
+      {plans.data?.testMode && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+          <strong>Test mode:</strong> no real money is charged. Pay with card <span className="font-mono">4718 6091 0820 4366</span>, any future expiry date and any CVV.
+        </div>
+      )}
       {isAdmin ? (
         <div>
           <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
