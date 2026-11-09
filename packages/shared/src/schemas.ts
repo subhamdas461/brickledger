@@ -55,7 +55,8 @@ export const registerSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
   company: optText(120),
-  inviteToken: z.string().max(200).optional(),
+  // Nullish: the Android app sends empty optional fields as null.
+  inviteToken: z.string().max(200).nullish(),
 });
 
 export const loginSchema = z.object({

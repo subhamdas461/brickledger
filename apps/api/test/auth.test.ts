@@ -17,6 +17,17 @@ describe('auth', () => {
     expect(user.orgs[0]).toMatchObject({ name: 'Rao Builders', role: 'owner', plan: 'pro', planStatus: 'trialing' });
   });
 
+  it('accepts the Android sign-up payload, which sends empty optional fields as null', async () => {
+    const res = await t.app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: { name: 'Phone User', email: 'phone-user@example.com', password: 'password123', company: null, inviteToken: null },
+    });
+    expect(res.json().error).toBeUndefined();
+    expect(res.statusCode).toBe(201);
+    expect(res.json().accessToken).toBeTruthy();
+  });
+
   it('rejects duplicate emails and weak passwords', async () => {
     const user = await registerUser(t.app);
     const dup = await t.app.inject({ method: 'POST', url: '/api/v1/auth/register', payload: { name: 'X', email: user.user.email, password: 'password123' } });
