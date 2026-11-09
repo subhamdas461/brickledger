@@ -265,5 +265,6 @@ export const ERROR_CODES = [
   'STORAGE_NOT_CONFIGURED',
   /** The server is missing required settings (sent by the Vercel entry before the app starts). */
   'SETUP_REQUIRED',
+  'ACCOUNT_SUSPENDED',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];

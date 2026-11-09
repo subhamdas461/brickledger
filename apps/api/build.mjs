@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const sharedEntry = fileURLToPath(new URL('../../packages/shared/src/index.ts', import.meta.url));
 
 await build({
-  entryPoints: ['src/index.ts', 'src/vercel.ts', 'src/scripts/migrate.ts', 'src/scripts/seed-demo.ts'],
+  entryPoints: ['src/index.ts', 'src/vercel.ts', 'src/scripts/migrate.ts', 'src/scripts/seed-demo.ts', 'src/scripts/admin.ts'],
   outdir: 'dist',
   entryNames: '[name]',
   bundle: true,

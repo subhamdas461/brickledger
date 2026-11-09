@@ -21,6 +21,7 @@ import {
   Plus,
   Receipt,
   Settings,
+  ShieldCheck,
   Smartphone,
   Sparkles,
   Store,
@@ -227,6 +228,7 @@ export function UserMenu({ compact }: { compact?: boolean }) {
         { label: 'Account settings', icon: <UserRound />, onSelect: () => navigate('/app/settings') },
         { label: 'Plan & billing', icon: <CreditCard />, onSelect: () => navigate('/app/settings?tab=billing') },
         { label: 'Get the Android app', icon: <Smartphone />, onSelect: () => navigate('/download') },
+        ...(me.user.isSuperAdmin ? [{ label: 'Admin panel', icon: <ShieldCheck />, onSelect: () => navigate('/admin') }] : []),
         { label: `Theme: ${pref}`, icon: <ThemeIcon />, onSelect: () => setPref(nextTheme) },
         {
           label: 'Sign out',

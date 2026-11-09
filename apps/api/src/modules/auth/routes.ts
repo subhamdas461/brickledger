@@ -12,7 +12,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Executor } from '../../db/client';
 import { passwordResets, sessions, users } from '../../db/schema';
 import { getDummyHash, hashPassword, randomToken, sha256, verifyPassword } from '../../lib/crypto';
-import { badRequest, conflict, unauthorized } from '../../lib/errors';
+import { AppError, badRequest, conflict, unauthorized } from '../../lib/errors';
 import { emails } from '../../lib/mailer';
 import { parse } from '../../lib/validate';
 import { buildMe, createWorkspace } from '../account/service';
@@ -22,6 +22,7 @@ export const REFRESH_COOKIE = 'bl_rt';
 const COOKIE_PATH = '/api/v1/auth';
 /** A rotated refresh token may be replayed within this window (parallel tabs/requests) without tripping reuse detection. */
 const ROTATION_GRACE_MS = 30_000;
+const SUSPENDED_MESSAGE = 'This account has been suspended. Contact support if you think this is a mistake.';
 
 export async function issueSession(
   app: FastifyInstance,
@@ -80,7 +81,7 @@ export async function authRoutes(app: FastifyInstance) {
 
     const passwordHash = await hashPassword(input.password);
     const user = await db.transaction(async (tx) => {
-      const [u] = await tx.insert(users).values({ email: input.email, name: input.name, passwordHash }).returning();
+      const [u] = await tx.insert(users).values({ email: input.email, name: input.name, passwordHash, lastSeenAt: new Date() }).returning();
       await createWorkspace(tx, {
         ownerId: u!.id,
         ownerName: u!.name,
@@ -109,7 +110,8 @@ export async function authRoutes(app: FastifyInstance) {
     const [user] = await db.select().from(users).where(eq(users.email, input.email)).limit(1);
     const ok = await verifyPassword(input.password, user?.passwordHash ?? (await getDummyHash()));
     if (!user || !ok) throw unauthorized('Incorrect email or password.');
-    await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
+    if (user.bannedAt) throw new AppError(403, 'ACCOUNT_SUSPENDED', SUSPENDED_MESSAGE); // only after the password checks out
+    await db.update(users).set({ lastLoginAt: new Date(), lastSeenAt: new Date() }).where(eq(users.id, user.id));
     const tokens = await issueSession(app, db, user.id, req);
     setRefreshCookie(app, reply, tokens.refreshToken);
     return authResponse(app, user.id, tokens);
@@ -136,7 +138,14 @@ export async function authRoutes(app: FastifyInstance) {
       }
     }
 
+    const [owner] = await db.select({ bannedAt: users.bannedAt }).from(users).where(eq(users.id, session.userId)).limit(1);
+    if (owner?.bannedAt) {
+      reply.clearCookie(REFRESH_COOKIE, { path: COOKIE_PATH });
+      throw unauthorized(SUSPENDED_MESSAGE);
+    }
+
     const tokens = await db.transaction(async (tx) => {
+      await tx.update(users).set({ lastSeenAt: new Date() }).where(eq(users.id, session.userId));
       const next = await issueSession(app, tx, session.userId, req, session.familyId);
       if (!session.revokedAt) {
         await tx

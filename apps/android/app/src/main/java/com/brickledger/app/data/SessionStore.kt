@@ -80,6 +80,7 @@ class SessionStore(context: Context) {
         val localName = stringPreferencesKey("local_name")
         val lastUserId = stringPreferencesKey("last_user_id")
         val updateSnooze = stringPreferencesKey("update_snooze")
+        val installId = stringPreferencesKey("install_id")
     }
 
     @Volatile var accessToken: String? = null
@@ -151,6 +152,14 @@ class SessionStore(context: Context) {
             it[Keys.profile] = AppJson.encodeToString(Profile.serializer(), profile)
             it[Keys.lastUserId] = auth.user.id
         }
+    }
+
+    /** Random id for this install, used only to count active installs. Not linked to any account. */
+    suspend fun installId(): String {
+        store.data.first()[Keys.installId]?.let { return it }
+        val id = java.util.UUID.randomUUID().toString()
+        store.edit { it[Keys.installId] = id }
+        return id
     }
 
     suspend fun snoozeUpdate(versionCode: Int, until: Long) {

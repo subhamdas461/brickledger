@@ -2,6 +2,7 @@ import { lazy, Suspense, type ComponentType } from 'react';
 import { createBrowserRouter, RouterProvider } from 'react-router';
 import { AppLayout, ProjectLayout, PublicLayout, RequireAuth } from './components/layout';
 import { Spinner } from './components/ui/surface';
+import { startAnalytics } from './lib/analytics';
 
 /** Route-level code splitting: each page is its own chunk. */
 function page<T extends Record<string, ComponentType<any>>>(loader: () => Promise<T>, name: keyof T) {
@@ -37,6 +38,15 @@ const Reports = page(() => import('./pages/project/Reports'), 'Reports');
 const Team = page(() => import('./pages/project/Team'), 'Team');
 const ActivityPage = page(() => import('./pages/project/ActivityPage'), 'ActivityPage');
 const ProjectSettings = page(() => import('./pages/project/ProjectSettings'), 'ProjectSettings');
+const AdminLayout = page(() => import('./pages/admin/AdminLayout'), 'AdminLayout');
+const AdminOverview = page(() => import('./pages/admin/Overview'), 'Overview');
+const AdminUsers = page(() => import('./pages/admin/Users'), 'Users');
+const AdminUserDetail = page(() => import('./pages/admin/Users'), 'UserDetail');
+const AdminWorkspaces = page(() => import('./pages/admin/OtherPages'), 'Workspaces');
+const AdminEngagement = page(() => import('./pages/admin/OtherPages'), 'Engagement');
+const AdminAppStats = page(() => import('./pages/admin/OtherPages'), 'AppStats');
+const AdminAudit = page(() => import('./pages/admin/OtherPages'), 'Audit');
+const AdminSystem = page(() => import('./pages/admin/OtherPages'), 'System');
 
 const router = createBrowserRouter([
   {
@@ -89,8 +99,30 @@ const router = createBrowserRouter([
       },
     ],
   },
+  {
+    path: '/admin',
+    element: (
+      <RequireAuth>
+        <AdminLayout />
+      </RequireAuth>
+    ),
+    children: [
+      { index: true, element: <AdminOverview /> },
+      { path: 'users', element: <AdminUsers /> },
+      { path: 'users/:id', element: <AdminUserDetail /> },
+      { path: 'workspaces', element: <AdminWorkspaces /> },
+      { path: 'engagement', element: <AdminEngagement /> },
+      { path: 'app', element: <AdminAppStats /> },
+      { path: 'audit', element: <AdminAudit /> },
+      { path: 'system', element: <AdminSystem /> },
+    ],
+  },
   { path: '*', element: <NotFound /> },
 ]);
+
+startAnalytics(router.state.location.pathname, (onPath) => {
+  router.subscribe((state) => onPath(state.location.pathname));
+});
 
 export function App() {
   return (

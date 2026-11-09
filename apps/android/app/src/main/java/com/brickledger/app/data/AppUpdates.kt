@@ -26,8 +26,10 @@ import okhttp3.Authenticator
 import okhttp3.CacheControl
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /** The site's `/apk/android.json`, written by `npm run release:android`. */
 @Serializable
@@ -39,6 +41,9 @@ data class AndroidRelease(
     val url: String = "/apk/brickledger.apk",
     val notes: String? = null,
 )
+
+@Serializable
+private data class AppPing(val installId: String, val versionName: String, val versionCode: Int)
 
 /**
  * In-app updates for the APK published on the website: compares the site's latest release with this
@@ -89,6 +94,7 @@ class AppUpdates(
         lastCheck = System.currentTimeMillis()
         scope.launch {
             session.loaded.first { it } // the server address is read from saved settings
+            ping()
             check(manual = false)
         }
     }
@@ -149,6 +155,16 @@ class AppUpdates(
             context.startActivity(intent)
         } catch (e: ActivityNotFoundException) {
             _state.value = State.Failed(ready.release, "This phone can’t open the installer. Download the update from the website instead.")
+        }
+    }
+
+    /** Anonymous "this install is alive", with its version, for the admin panel's app stats. */
+    private suspend fun ping() = withContext(Dispatchers.IO) {
+        runCatching {
+            val body = AppJson.encodeToString(AppPing.serializer(), AppPing(session.installId(), BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE))
+                .toRequestBody("application/json".toMediaType())
+            val request = Request.Builder().url(site.resolve("api/v1/public/app-ping")!!).post(body).build()
+            client.newCall(request).execute().close()
         }
     }
 

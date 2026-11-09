@@ -1,13 +1,13 @@
 import { changePasswordSchema, updateProfileSchema } from '@brickledger/shared';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { files, organizations, projects, sessions, users } from '../../db/schema';
+import { sessions, users } from '../../db/schema';
 import { hashPassword, verifyPassword } from '../../lib/crypto';
 import { badRequest, notFound, unauthorized } from '../../lib/errors';
 import { parse } from '../../lib/validate';
 import { REFRESH_COOKIE, issueSession } from '../auth/routes';
-import { buildMe } from './service';
+import { buildMe, deleteUserAccount } from './service';
 
 export async function accountRoutes(app: FastifyInstance) {
   const { db, storage } = app.ctx;
@@ -59,21 +59,7 @@ export async function accountRoutes(app: FastifyInstance) {
     if (!user) throw notFound('User');
     if (!(await verifyPassword(input.password, user.passwordHash))) throw badRequest('Password is incorrect.');
 
-    const owned = await db.select({ id: organizations.id }).from(organizations).where(eq(organizations.ownerId, user.id));
-    const orgIds = owned.map((o) => o.id);
-    const blobs = orgIds.length
-      ? await db
-          .select({ key: files.storageKey })
-          .from(files)
-          .innerJoin(projects, eq(projects.id, files.projectId))
-          .where(inArray(projects.orgId, orgIds))
-      : [];
-
-    await db.transaction(async (tx) => {
-      if (orgIds.length) await tx.delete(organizations).where(inArray(organizations.id, orgIds));
-      await tx.delete(users).where(eq(users.id, user.id));
-    });
-    for (const b of blobs) await storage.delete(b.key).catch(() => undefined);
+    await deleteUserAccount(db, storage, user.id);
     reply.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
     return { ok: true };
   });

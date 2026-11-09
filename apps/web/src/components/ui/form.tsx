@@ -1,4 +1,4 @@
-import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { cloneElement, forwardRef, isValidElement, useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { cn } from '../../lib/cn';
 
 /** Full width unless the caller sets its own width (avoids `w-full` fighting `w-44`). */
@@ -33,7 +33,7 @@ export const Select = forwardRef<
   SelectHTMLAttributes<HTMLSelectElement> & { options: Option[]; placeholder?: string; invalid?: boolean }
 >(function Select({ className, options, placeholder, invalid, ...rest }, ref) {
   return (
-    <select ref={ref} className={cn(control, width(className), 'h-10 appearance-none bg-[length:16px] bg-[right_10px_center] bg-no-repeat pr-9', selectArrow, invalid && 'border-red-500', className)} {...rest}>
+    <select ref={ref} className={cn(control, width(className), 'select-arrow h-10 appearance-none pr-9', invalid && 'border-red-500', className)} {...rest}>
       {placeholder !== undefined && <option value="">{placeholder}</option>}
       {options.map((o) => (
         <option key={o.value} value={o.value}>
@@ -43,9 +43,6 @@ export const Select = forwardRef<
     </select>
   );
 });
-
-const selectArrow =
-  "bg-[url(\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23898781' stroke-width='2'%3e%3cpath stroke-linecap='round' stroke-linejoin='round' d='m6 9 6 6 6-6'/%3e%3c/svg%3e\")]";
 
 export function Field({
   label,
@@ -64,15 +61,19 @@ export function Field({
   htmlFor?: string;
   required?: boolean;
 }) {
+  // Links the label to its input, so tapping the label focuses it and screen readers announce it.
+  const autoId = useId();
+  const field = isValidElement<{ id?: string }>(children) ? children : null;
+  const id = htmlFor ?? field?.props.id ?? autoId;
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
       {label && (
-        <label htmlFor={htmlFor} className="text-sm font-medium text-stone-700 dark:text-stone-300">
+        <label htmlFor={id} className="text-sm font-medium text-stone-700 dark:text-stone-300">
           {label}
           {required && <span className="ml-0.5 text-brand-600">*</span>}
         </label>
       )}
-      {children}
+      {field && !htmlFor && !field.props.id ? cloneElement(field, { id }) : children}
       {error ? (
         <p className="text-xs font-medium text-red-600 dark:text-red-400">{error}</p>
       ) : hint ? (

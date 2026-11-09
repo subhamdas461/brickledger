@@ -1,10 +1,10 @@
 {
-  "versionName": "1.0.2",
-  "versionCode": 3,
+  "versionName": "1.0.3",
+  "versionCode": 4,
   "size": 2470180,
-  "sha256": "327c141b7077a47b64f82fd9475e8a2fb0a8893830af9048f72591db9ff01f4d",
+  "sha256": "c9964ad8c5bc18838f030b77e1be36bcb82fb1848fb5a5e6936fdcb2cd8323d2",
   "minAndroid": "8.0",
-  "url": "/apk/brickledger.apk",
-  "publishedAt": "2026-11-09T13:01:33.778Z",
-  "notes": "What changed"
+  "url": "/api/v1/public/download/android?source=update&v=1.0.3",
+  "publishedAt": "2026-11-09T14:12:13.564Z",
+  "notes": "Small improvements and fixes."
 }

@@ -88,7 +88,7 @@ export function DownloadPage() {
               {release ? (
                 <>
                   <a
-                    href={release.url}
+                    href={`/api/v1/public/download/android?source=web&v=${encodeURIComponent(release.versionName)}`}
                     download={`${APP_NAME}-${release.versionName}.apk`}
                     className={buttonClass(device === 'ios' ? 'secondary' : 'primary', 'lg')}
                   >

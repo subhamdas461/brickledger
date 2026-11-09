@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { cn } from '../../lib/cn';
 
 export interface MenuItem {
@@ -12,7 +12,16 @@ export interface MenuItem {
 /** Lightweight dropdown menu: click/keyboard toggle, closes on outside click or Escape. */
 export function Menu({ trigger, items, align = 'right', className }: { trigger: (props: { onClick: () => void; 'aria-expanded': boolean }) => ReactNode; items: (MenuItem | null)[]; align?: 'left' | 'right'; className?: string }) {
   const [open, setOpen] = useState(false);
+  const [openUp, setOpenUp] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // Opens upward when there's no room below, e.g. the account menu at the bottom of the sidebar.
+  useLayoutEffect(() => {
+    if (!open || !ref.current || !menuRef.current) return;
+    const anchor = ref.current.getBoundingClientRect();
+    const height = menuRef.current.offsetHeight + 8;
+    setOpenUp(anchor.bottom + height > window.innerHeight && anchor.top - height > 0);
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
@@ -31,9 +40,11 @@ export function Menu({ trigger, items, align = 'right', className }: { trigger: 
       {trigger({ onClick: () => setOpen((o) => !o), 'aria-expanded': open })}
       {open && (
         <div
+          ref={menuRef}
           role="menu"
           className={cn(
-            'absolute z-50 mt-1.5 min-w-48 animate-pop-in overflow-hidden rounded-xl border border-stone-200 bg-white p-1 shadow-xl shadow-stone-900/10 dark:border-stone-700 dark:bg-stone-900',
+            openUp ? 'bottom-full mb-1.5' : 'mt-1.5',
+            'absolute z-50 min-w-48 animate-pop-in overflow-hidden rounded-xl border border-stone-200 bg-white p-1 shadow-xl shadow-stone-900/10 dark:border-stone-700 dark:bg-stone-900',
             align === 'right' ? 'right-0' : 'left-0',
           )}
         >

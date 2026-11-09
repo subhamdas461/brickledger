@@ -19,6 +19,7 @@
     "db:generate": "npm run db:generate --workspace @brickledger/api",
     "db:migrate": "npm run db:migrate --workspace @brickledger/api",
     "seed:demo": "npm run seed:demo --workspace @brickledger/api",
+    "admin": "npm run admin --silent --workspace @brickledger/api --",
     "release:android": "node scripts/publish-android.mjs"
   },
   "engines": {

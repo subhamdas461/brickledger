@@ -90,7 +90,8 @@ const manifest = {
   size: statSync(apk).size,
   sha256: createHash('sha256').update(bytes).digest('hex'),
   minAndroid: { 24: '7.0', 26: '8.0', 28: '9', 29: '10', 30: '11' }[minSdk] ?? `API ${minSdk}`,
-  url: '/apk/brickledger.apk',
+  // Through the download counter, which sends the app on to /apk/brickledger.apk.
+  url: `/api/v1/public/download/android?source=update&v=${encodeURIComponent(versionName)}`,
   publishedAt: new Date().toISOString(),
   ...(notes ? { notes } : {}),
 };

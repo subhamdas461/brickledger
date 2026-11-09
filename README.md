@@ -68,7 +68,7 @@ Useful scripts (from the repo root):
 
 | Command | What it does |
 |---|---|
-| `npm test` | 27 API integration tests (auth & token rotation, permissions, plan limits, sync, billing webhooks, uploads, PDF/CSV) |
+| `npm test` | 46 API integration tests (auth & token rotation, permissions, plan limits, sync, billing webhooks, uploads, PDF/CSV, admin panel, analytics) |
 | `npm run typecheck` | TypeScript checks for every workspace |
 | `npm run build` | Production build: web (`apps/web/dist`) + bundled API (`apps/api/dist`) |
 | `npm start` | Run the built API (`SERVE_WEB=true` also serves the web app) |
@@ -117,6 +117,33 @@ The server address can also be changed on the sign-in screen (server icon). Rele
 **Security.** scrypt password hashing, short-lived JWTs, rotating refresh tokens with family revocation on reuse, httpOnly SameSite cookies on web, Keystore-encrypted tokens on Android, strict CSP/HSTS via Helmet, rate-limited auth, zod validation on every input, upload type allow-list (no SVG/HTML), sandboxed file responses, CSV formula-injection guarding, and server-side role checks on every route (contributors can only delete their own entries).
 
 ---
+
+## Admin panel
+
+Super admins get a panel at `/admin` (in the account menu once signed in) covering the whole system:
+
+| Section | What it does |
+|---|---|
+| **Overview** | Accounts, active users, downloads, visitors, estimated monthly revenue, plans, and everything people have recorded |
+| **Accounts** | Search and filter accounts, see their workspaces, projects and signed-in devices. Ban or unban with a reason, sign out everywhere, create a password reset link, edit name or email, delete, export CSV |
+| **Workspaces** | Search by name or owner, see usage and storage, give a plan for free, extend a trial |
+| **Website** | Pages opened, visitors, time on site, top pages, referrers, countries and devices (7, 30 or 90 days) |
+| **Android app** | Downloads by day, source and version; active installs and versions in use |
+| **Audit log** | Every action taken in the panel: who, what, on whom, when, and why |
+| **System** | Database, storage, email and payments status, with what still needs setting up |
+
+**Becoming a super admin.** This is a flag in the database that only the command line can set. Nothing on the website can grant it, and sign-ups don't verify email ownership, so an "admin email" setting could be claimed by whoever registers that address first.
+
+```bash
+# Sign up on the site first, then (uses DATABASE_URL, or the one in a git-ignored .env.vercel):
+npm run admin -- grant you@example.com
+npm run admin -- list
+npm run admin -- revoke you@example.com
+```
+
+**Safeguards.** Non-admins get a plain 404, and the flag is re-read on every admin request. Super admins can't be banned or deleted from the panel, and you can't act on yourself. A ban takes effect within 30 seconds on every server instance, even for tokens already issued. Deleting requires typing the account's email. The panel shows project names and counts, not project contents.
+
+**Analytics.** Self-hosted and anonymous: no cookies and no stored IP addresses, just daily totals in `analytics_counters`. A visitor is counted once a day using a hash that includes the date and a server secret, and is deleted after a few days. Browsers with Global Privacy Control or Do Not Track aren't counted, nor are known bots or the admin panel. Because the hash changes daily, the panel adds up daily visitors rather than claiming monthly uniques. App downloads are counted when they go through `/api/v1/public/download/android` (the download page and in-app updates do); the app reports a random install id and its version, which aren't linked to any account. Days follow `STATS_TIMEZONE` (default `Asia/Kolkata`).
 
 ## Offline mode (no account, no internet)
 
@@ -234,9 +261,9 @@ The script raises the version in [`apps/android/gradle.properties`](apps/android
 
 ```
 apps/
-  api/        Fastify server: src/modules/{auth,account,orgs,billing,projects,resources,sync,files,members,analytics,reports}
+  api/        Fastify server: src/modules/{auth,account,admin,tracking,orgs,billing,projects,resources,sync,files,members,analytics,reports}
               src/db/schema.ts (Drizzle) · drizzle/ (SQL migrations) · test/ (Vitest + in-memory PGlite)
-  web/        React app: src/pages/{marketing,auth,app,project} · src/components (UI kit, charts, forms)
+  web/        React app: src/pages/{marketing,auth,app,project,admin} · src/components (UI kit, charts, forms)
   android/    Compose app: data/ (Room, Retrofit, sync engine, workers, backups, on-device reports) · ui/ (theme, components, screens)
 packages/
   shared/     Vocabularies, plans, templates, zod schemas, API types, formatting

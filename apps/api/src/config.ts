@@ -72,6 +72,8 @@ const envSchema = z.object({
   SERVE_WEB: bool,
   WEB_DIST: z.string().default('../web/dist'),
   AUTH_RATE_LIMIT_PER_MIN: z.coerce.number().int().default(20),
+  /** Timezone that decides when a "day" starts in the admin panel's stats. */
+  STATS_TIMEZONE: z.string().default('Asia/Kolkata'),
 });
 
 export type Config = z.infer<typeof envSchema>;

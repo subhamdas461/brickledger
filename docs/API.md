@@ -109,3 +109,36 @@ POST /projects/:id/sync
 - Mutations are applied in dependency order and are idempotent (client UUIDs). Last write received wins; a record deleted on the server stays deleted.
 - `canonicalId` means the server merged the record into an existing one (two phones marking the same worker on the same day).
 - `retryable: false` means the change can never succeed (validation/permission) - drop it and re-pull.
+
+## Public analytics
+
+No sign-in. Rate limited. Used by the website and the Android app; see the README's "Admin panel" section for what is and isn't stored.
+
+| Method | Path | Body / query |
+|---|---|---|
+| POST | `/public/track` | `{ type: "view", path, referrer? }` or `{ type: "engaged", seconds }`. Replies 204 |
+| POST | `/public/app-ping` | `{ installId, versionName, versionCode }`. Replies 204 |
+| GET | `/public/download/android` | `?source=web\|update&v=1.0.3`. Counts it, then redirects to `/apk/brickledger.apk` |
+
+## Admin
+
+Needs a super admin's token (`npm run admin -- grant <email>`); anyone else gets 404. Every change is written to the audit log.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/admin/overview` | Totals and 30-day series |
+| GET | `/admin/engagement` | `?days=7\|30\|90` |
+| GET | `/admin/app-stats` | Downloads, installs, versions |
+| GET | `/admin/users` | `?q=&status=all\|active\|banned\|admin&sort=newest\|lastSeen\|name&limit=&offset=` |
+| GET | `/admin/users/export.csv` | Same filters |
+| GET, PATCH | `/admin/users/:id` | PATCH `{ name?, email? }` |
+| POST | `/admin/users/:id/ban` | `{ reason }`. Not for yourself or another super admin |
+| POST | `/admin/users/:id/unban` | |
+| POST | `/admin/users/:id/sign-out` | Ends every session |
+| POST | `/admin/users/:id/reset-link` | Returns a one-hour link |
+| DELETE | `/admin/users/:id` | `{ confirmEmail }`. Not for yourself or another super admin |
+| GET | `/admin/workspaces` | `?q=&plan=all\|free\|pro\|business&limit=&offset=` |
+| PATCH | `/admin/workspaces/:id/plan` | `{ plan }`. Not for workspaces with a paid subscription |
+| POST | `/admin/workspaces/:id/extend-trial` | `{ days }` |
+| GET | `/admin/audit` | `?q=&limit=&offset=` |
+| GET | `/admin/system` | Status of database, storage, email and payments |

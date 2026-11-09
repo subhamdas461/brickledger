@@ -14,6 +14,10 @@ import { TokenService } from './lib/crypto';
 import { AppError, unauthorized } from './lib/errors';
 import { createMailer, type Mailer } from './lib/mailer';
 import { createStorage, type Storage } from './lib/storage';
+import { adminRoutes } from './modules/admin/routes';
+import { createAccountGate } from './modules/admin/gate';
+import { trackingRoutes } from './modules/tracking/routes';
+import { VERSION } from './version';
 import { accountRoutes } from './modules/account/routes';
 import { authRoutes } from './modules/auth/routes';
 import { createBillingProvider, type BillingProvider } from './modules/billing/providers';
@@ -25,7 +29,7 @@ import { projectRoutes } from './modules/projects/routes';
 import { resourceRoutes } from './modules/resources/routes';
 import { syncRoutes } from './modules/sync/routes';
 
-export const VERSION = '1.0.0';
+export { VERSION };
 
 export interface AppOverrides {
   database?: Database;
@@ -56,12 +60,15 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
     billing: overrides.billing ?? createBillingProvider(config),
   };
   app.decorate('ctx', ctx);
+  const accountGate = createAccountGate(ctx.db);
+  app.decorate('accountGate', accountGate);
   app.decorateRequest('userId', '');
   app.decorate('authenticate', async (req: FastifyRequest) => {
     const header = req.headers.authorization;
     if (!header?.startsWith('Bearer ')) throw unauthorized();
     const userId = await ctx.tokens.verifyAccess(header.slice(7).trim());
     if (!userId) throw unauthorized('Your session has expired. Please sign in again.');
+    if (!(await accountGate.isActive(userId))) throw unauthorized('Your session has expired. Please sign in again.');
     req.userId = userId;
   });
   app.addHook('onClose', async () => {
@@ -138,6 +145,7 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
       await api.register(authRoutes, { prefix: '/auth' });
       await api.register(billingPublicRoutes);
       await api.register(invitePublicRoutes);
+      await api.register(trackingRoutes, { prefix: '/public' });
       await api.register(fileRoutes);
       await api.register(async (priv) => {
         priv.addHook('onRequest', priv.authenticate);
@@ -147,6 +155,7 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
         await priv.register(resourceRoutes);
         await priv.register(syncRoutes);
         await priv.register(memberRoutes);
+        await priv.register(adminRoutes, { prefix: '/admin' });
       });
     },
     { prefix: '/api/v1' },

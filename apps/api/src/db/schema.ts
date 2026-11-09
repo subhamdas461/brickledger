@@ -40,6 +40,12 @@ export const users = pgTable(
     phone: text('phone'),
     emailVerifiedAt: tsz('email_verified_at'),
     lastLoginAt: tsz('last_login_at'),
+    /** Last sign-in or token refresh: what "active users" counts. */
+    lastSeenAt: tsz('last_seen_at'),
+    /** Full access to /admin. Set only from the command line: `npm run admin -- grant <email>`. */
+    isSuperAdmin: boolean('is_super_admin').notNull().default(false),
+    bannedAt: tsz('banned_at'),
+    banReason: text('ban_reason'),
     createdAt: tsz('created_at').notNull().defaultNow(),
     updatedAt: tsz('updated_at').notNull().defaultNow(),
   },
@@ -214,6 +220,61 @@ export const billingEvents = pgTable('billing_events', {
   payload: jsonb('payload'),
   createdAt: tsz('created_at').notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------- admin & product analytics
+
+/** Every action taken in the admin panel: who, what, on whom. Kept when the admin or target is deleted. */
+export const adminAudit = pgTable(
+  'admin_audit',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    adminId: uuid('admin_id').references(() => users.id, { onDelete: 'set null' }),
+    adminEmail: text('admin_email').notNull(),
+    action: text('action').notNull(),
+    targetType: text('target_type').notNull(),
+    targetId: text('target_id'),
+    targetLabel: text('target_label'),
+    details: jsonb('details'),
+    createdAt: tsz('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('admin_audit_created_idx').on(t.createdAt), index('admin_audit_target_idx').on(t.targetId)],
+);
+
+/** Daily totals for website and app usage. Counters only: no per-visitor history is kept. */
+export const analyticsCounters = pgTable(
+  'analytics_counters',
+  {
+    day: date('day', { mode: 'string' }).notNull(),
+    metric: text('metric').notNull(),
+    dimension: text('dimension').notNull().default(''),
+    count: bigint('count', { mode: 'number' }).notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.metric, t.dimension] })],
+);
+
+/** Counts each visitor once per day. The hash changes daily, can't be reversed to an IP, and is deleted after a few days. */
+export const analyticsUniques = pgTable(
+  'analytics_uniques',
+  {
+    day: date('day', { mode: 'string' }).notNull(),
+    scope: text('scope').notNull(),
+    hash: text('hash').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.scope, t.hash] })],
+);
+
+/** App installs, keyed by a hash of a random id generated on the phone (not linked to any account). */
+export const appDevices = pgTable(
+  'app_devices',
+  {
+    id: text('id').primaryKey(),
+    versionName: text('version_name').notNull(),
+    versionCode: integer('version_code').notNull(),
+    firstSeenAt: tsz('first_seen_at').notNull().defaultNow(),
+    lastSeenAt: tsz('last_seen_at').notNull().defaultNow(),
+  },
+  (t) => [index('app_devices_seen_idx').on(t.lastSeenAt)],
+);
 
 // ---------------------------------------------------------------- synced project data
 

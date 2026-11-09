@@ -16,6 +16,8 @@ export interface User {
   name: string;
   phone: string | null;
   createdAt: string;
+  /** Only present (and true) for the signed-in user when they may open /admin. */
+  isSuperAdmin?: boolean;
 }
 
 export interface OrgSummary {
@@ -481,4 +483,122 @@ export interface SyncPushResult {
 
 export interface SyncPushResponse {
   results: SyncPushResult[];
+}
+
+// ---------------------------------------------------------------- admin panel
+
+export interface AdminPoint {
+  day: string;
+  value: number;
+}
+
+export interface AdminRank {
+  name: string;
+  value: number;
+}
+
+export interface AdminOverview {
+  generatedAt: string;
+  users: { total: number; newToday: number; new7d: number; new30d: number; active1d: number; active7d: number; active30d: number; banned: number };
+  workspaces: { total: number; free: number; pro: number; business: number; trialing: number; paying: number; comped: number };
+  revenue: { currency: string; mrr: number; paying: number };
+  usage: { projects: number; demoProjects: number; expenses: number; workers: number; tasks: number; diaryEntries: number; issues: number; files: number; storageBytes: number };
+  web: { viewsToday: number; visitorsToday: number; views30d: number; visitors30d: number; avgSeconds30d: number };
+  app: { downloads: number; downloads30d: number; devices: number; activeDevices7d: number };
+  series: { signups: AdminPoint[]; views: AdminPoint[]; downloads: AdminPoint[] };
+}
+
+export interface AdminEngagement {
+  days: number;
+  views: number;
+  visitors: number;
+  viewsPerVisitor: number;
+  avgSeconds: number;
+  viewSeries: AdminPoint[];
+  visitorSeries: AdminPoint[];
+  pages: AdminRank[];
+  referrers: AdminRank[];
+  countries: AdminRank[];
+  devices: AdminRank[];
+}
+
+export interface AdminAppStats {
+  downloads: number;
+  downloads30d: number;
+  uniqueDownloads: number;
+  opens30d: number;
+  downloadSeries: AdminPoint[];
+  opensSeries: AdminPoint[];
+  sources: AdminRank[];
+  downloadVersions: AdminRank[];
+  devices: { total: number; active1d: number; active7d: number; active30d: number };
+  activeVersions: AdminRank[];
+}
+
+export interface AdminUserRow {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  createdAt: string;
+  lastSeenAt: string | null;
+  bannedAt: string | null;
+  isSuperAdmin: boolean;
+  projects: number;
+  plan: string | null;
+  trialing: boolean;
+}
+
+export interface AdminAuditEntry {
+  id: string;
+  adminEmail: string;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  targetLabel: string | null;
+  details: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface AdminUserDetail {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  createdAt: string;
+  lastLoginAt: string | null;
+  lastSeenAt: string | null;
+  bannedAt: string | null;
+  banReason: string | null;
+  isSuperAdmin: boolean;
+  workspaces: { id: string; name: string; role: string; plan: string }[];
+  sessions: { id: string; userAgent: string | null; ip: string | null; createdAt: string; lastUsedAt: string | null }[];
+  projects: { id: string; name: string; status: string; isDemo: boolean; orgName: string; expenses: number; members: number; updatedAt: string }[];
+  history: AdminAuditEntry[];
+}
+
+export interface AdminWorkspaceRow {
+  id: string;
+  name: string;
+  plan: string;
+  planStatus: string;
+  trialEndsAt: string | null;
+  hasSubscription: boolean;
+  ownerEmail: string | null;
+  ownerId: string | null;
+  members: number;
+  projects: number;
+  storageBytes: number;
+  createdAt: string;
+}
+
+export interface AdminSystem {
+  version: string;
+  node: string;
+  region: string | null;
+  commit: string | null;
+  statsTimezone: string;
+  database: { driver: string; up: boolean; latencyMs: number; sizeBytes: number };
+  activeSessions: number;
+  checks: { key: string; level: 'ok' | 'info' | 'warning' | 'error'; title: string; message: string }[];
 }

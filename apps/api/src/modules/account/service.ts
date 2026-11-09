@@ -1,7 +1,8 @@
 import { TRIAL_DAYS, TRIAL_PLAN, type MeResponse, type OrgRole, type OrgSummary, type PlanStatus, type User } from '@brickledger/shared';
-import { asc, eq } from 'drizzle-orm';
-import type { Executor } from '../../db/client';
-import { orgMembers, organizations, users } from '../../db/schema';
+import { asc, eq, inArray } from 'drizzle-orm';
+import type { DB, Executor } from '../../db/client';
+import { files, orgMembers, organizations, projects, users } from '../../db/schema';
+import type { Storage } from '../../lib/storage';
 import { firstName } from '../../lib/util';
 import { planOf } from '../billing/limits';
 
@@ -33,7 +34,7 @@ export async function listUserOrgs(db: Executor, userId: string): Promise<OrgSum
 export async function buildMe(db: Executor, userId: string): Promise<MeResponse | null> {
   const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (!user) return null;
-  return { user: toUser(user), orgs: await listUserOrgs(db, userId) };
+  return { user: { ...toUser(user), ...(user.isSuperAdmin ? { isSuperAdmin: true } : {}) }, orgs: await listUserOrgs(db, userId) };
 }
 
 /** Every new account gets its own workspace, starting with a free trial of Pro. */
@@ -54,4 +55,18 @@ export async function createWorkspace(
     .returning();
   await db.insert(orgMembers).values({ orgId: org!.id, userId: opts.ownerId, role: 'owner' });
   return org!;
+}
+
+/** Permanently deletes an account, the workspaces it owns and all their projects and files. */
+export async function deleteUserAccount(db: DB, storage: Storage, userId: string) {
+  const owned = await db.select({ id: organizations.id }).from(organizations).where(eq(organizations.ownerId, userId));
+  const orgIds = owned.map((o) => o.id);
+  const blobs = orgIds.length
+    ? await db.select({ key: files.storageKey }).from(files).innerJoin(projects, eq(projects.id, files.projectId)).where(inArray(projects.orgId, orgIds))
+    : [];
+  await db.transaction(async (tx) => {
+    if (orgIds.length) await tx.delete(organizations).where(inArray(organizations.id, orgIds));
+    await tx.delete(users).where(eq(users.id, userId));
+  });
+  for (const b of blobs) await storage.delete(b.key).catch(() => undefined);
 }
