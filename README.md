@@ -209,16 +209,18 @@ keyPassword=...
 
 Set your live address once in [`apps/android/gradle.properties`](apps/android/gradle.properties), e.g. `brickledger.productionUrl=https://your-project.vercel.app`. Release builds use it for the API, the web links and the invite deep-link host.
 
-**Publish on your website** (the `/download` page):
+**Publish a new version** (website `/download` page + in-app update prompt):
 
 ```bash
-npm run release:android        # builds the APK into apps/web/public/apk/ with its version info and QR code
-git add apps/web/public/apk && git commit -m "Android 1.0.1" && git push
+npm run release:android -- --notes "Fixed sign-up"     # 1.0.1 -> 1.0.2; also --minor, --major, --no-bump
+git add apps/web/public/apk apps/android/gradle.properties && git commit -m "Android 1.0.2" && git push
 ```
 
-For each new release, first raise `versionCode` and `versionName` in [`app/build.gradle.kts`](apps/android/app/build.gradle.kts); phones only update to a higher `versionCode`. The page reads `apk/android.json`, so it shows the new version as soon as it's deployed. The app doesn't check for updates itself yet, so tell users when there's a new version.
+The script raises the version in [`apps/android/gradle.properties`](apps/android/gradle.properties), builds the signed APK and writes it to `apps/web/public/apk/` with `android.json` (version, size, checksum, notes) and the QR code.
 
-**Google Play:** `./gradlew bundleRelease`, then upload the `.aab` in Play Console.
+**In-app updates:** the app reads `<server>/apk/android.json` when it opens and every few hours. If `versionCode` is higher than its own, it shows "Update available" with the notes. "Update now" downloads with progress, verifies the SHA-256 and opens Android's installer; "Later" asks again after a day (or as soon as a newer version appears), and Settings → App version always offers it. Checks fail silently when offline. Android rejects any update not signed with the same key.
+
+**Google Play:** `./gradlew bundleRelease`, then upload the `.aab` in Play Console. Google Play forbids apps updating themselves, so before uploading remove the `REQUEST_INSTALL_PACKAGES` permission from `AndroidManifest.xml` and the `UpdateDialog` call in `AppNavHost.kt`; Play then delivers updates.
 
 ## Going to market - checklist
 

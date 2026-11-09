@@ -1,6 +1,7 @@
 package com.brickledger.app
 
 import android.app.Application
+import com.brickledger.app.data.AppUpdates
 import com.brickledger.app.data.BackupInbox
 import com.brickledger.app.data.LocalReports
 import com.brickledger.app.data.Repository
@@ -29,4 +30,5 @@ class AppContainer(app: Application) {
     val repo: Repository by lazy { Repository(app, db, api, session, registry, sync, syncEngine, okHttp) }
     val reports: LocalReports by lazy { LocalReports(app, repo) }
     val backupInbox: BackupInbox by lazy { BackupInbox(repo, session) }
+    val updates: AppUpdates by lazy { AppUpdates(app, session, okHttp, appScope) }
 }

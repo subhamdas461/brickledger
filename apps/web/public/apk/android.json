@@ -1,9 +1,10 @@
 {
-  "versionName": "1.0.0",
-  "versionCode": 1,
-  "size": 2453732,
-  "sha256": "9fceaa2aa98a1d277289393ffba45b9b6693afb4a13c849021507554ea8a8134",
+  "versionName": "1.0.2",
+  "versionCode": 3,
+  "size": 2470180,
+  "sha256": "327c141b7077a47b64f82fd9475e8a2fb0a8893830af9048f72591db9ff01f4d",
   "minAndroid": "8.0",
   "url": "/apk/brickledger.apk",
-  "publishedAt": "2026-11-08T14:47:47.928Z"
+  "publishedAt": "2026-11-09T13:01:33.778Z",
+  "notes": "What changed"
 }

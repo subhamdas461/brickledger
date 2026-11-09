@@ -46,6 +46,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        container.updates.checkIfDue()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         lifecycleScope.launch { handleIntent(intent) }

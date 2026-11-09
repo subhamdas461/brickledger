@@ -12,6 +12,7 @@ interface AndroidRelease {
   minAndroid: string;
   url: string;
   publishedAt: string;
+  notes?: string;
 }
 
 type Device = 'android' | 'ios' | 'other';
@@ -97,6 +98,7 @@ export function DownloadPage() {
                   <p className="mt-3 text-sm text-stone-500 dark:text-stone-400">
                     Version {release.versionName} · {mb(release.size)} · Android {release.minAndroid} or newer
                   </p>
+                  {release.notes && <p className="mt-2 max-w-xl text-sm text-stone-600 dark:text-stone-300"><strong>What’s new:</strong> {release.notes}</p>}
                 </>
               ) : missing ? (
                 <p className="max-w-xl rounded-2xl border border-stone-200 bg-stone-50 p-4 text-sm text-stone-600 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-300">
@@ -157,7 +159,7 @@ export function DownloadPage() {
             </div>
             <div className="rounded-2xl border border-stone-200 bg-white p-5 dark:border-stone-800 dark:bg-stone-900">
               <p className="font-semibold text-stone-900 dark:text-white">Updating</p>
-              <p className="mt-2">Download the latest version from this page and install it over the old one. Your projects stay on the phone and in your account.</p>
+              <p className="mt-2">The app tells you when a new version is ready: tap <strong>Update now</strong>. You can also download the latest version here and install it over the old one. Your projects stay on the phone and in your account.</p>
             </div>
             {release && (
               <details className="rounded-2xl border border-stone-200 bg-white p-5 dark:border-stone-800 dark:bg-stone-900">

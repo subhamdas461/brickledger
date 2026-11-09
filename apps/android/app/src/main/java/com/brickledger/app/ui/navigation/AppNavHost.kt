@@ -26,6 +26,7 @@ import com.brickledger.app.ui.screens.RegisterScreen
 import com.brickledger.app.ui.screens.RestoreBackupDialog
 import com.brickledger.app.ui.screens.SectionScreen
 import com.brickledger.app.ui.screens.SettingsScreen
+import com.brickledger.app.ui.screens.UpdateDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -173,4 +174,8 @@ fun AppNavHost(container: AppContainer) {
             onDismiss = { container.backupInbox.discard() },
         )
     }
+
+    // A newer version on the website. The prompt waits while a backup restore is being confirmed.
+    val update by container.updates.state.collectAsStateWithLifecycle()
+    if (incoming == null) UpdateDialog(update, container.updates)
 }

@@ -23,8 +23,9 @@ android {
         applicationId = "com.brickledger.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        // Raised by `npm run release:android` (see gradle.properties). Phones only update to a higher versionCode.
+        versionCode = ((project.findProperty("brickledger.versionCode") as String?) ?: "1").toInt()
+        versionName = (project.findProperty("brickledger.versionName") as String?) ?: "1.0.0"
         // Production address (gradle.properties: brickledger.productionUrl). The website and the API
         // are served from the same address (Vercel, or the Docker image with SERVE_WEB=true).
         val productionUrl = ((project.findProperty("brickledger.productionUrl") as String?) ?: "https://brickledger.app").trimEnd('/')

@@ -79,6 +79,7 @@ class SessionStore(context: Context) {
         val offlineMode = stringPreferencesKey("offline_mode")
         val localName = stringPreferencesKey("local_name")
         val lastUserId = stringPreferencesKey("last_user_id")
+        val updateSnooze = stringPreferencesKey("update_snooze")
     }
 
     @Volatile var accessToken: String? = null
@@ -111,6 +112,10 @@ class SessionStore(context: Context) {
     var lastUserId: String? = null
         private set
 
+    /** "Later" on the update prompt: the versionCode, and when to ask about it again. */
+    var updateSnooze: Pair<Int, Long>? = null
+        private set
+
     val isLoggedIn: Boolean get() = refreshToken != null && _profile.value != null
 
     /** Signed in to the cloud, or using offline mode - either way the app is usable. */
@@ -129,6 +134,7 @@ class SessionStore(context: Context) {
         _offlineMode.value = prefs[Keys.offlineMode] == "true"
         localName = prefs[Keys.localName].orEmpty()
         lastUserId = prefs[Keys.lastUserId]
+        updateSnooze = prefs[Keys.updateSnooze]?.split(":")?.let { (version, until) -> version.toInt() to until.toLong() }
         _profile.value = if (refreshToken != null) prefs[Keys.profile]?.let { runCatching { AppJson.decodeFromString(Profile.serializer(), it) }.getOrNull() } else null
         _loaded.value = true
     }
@@ -145,6 +151,11 @@ class SessionStore(context: Context) {
             it[Keys.profile] = AppJson.encodeToString(Profile.serializer(), profile)
             it[Keys.lastUserId] = auth.user.id
         }
+    }
+
+    suspend fun snoozeUpdate(versionCode: Int, until: Long) {
+        updateSnooze = versionCode to until
+        store.edit { it[Keys.updateSnooze] = "$versionCode:$until" }
     }
 
     suspend fun enterOfflineMode(name: String) {

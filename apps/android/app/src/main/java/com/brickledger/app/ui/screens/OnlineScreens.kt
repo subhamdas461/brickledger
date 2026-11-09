@@ -51,6 +51,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.brickledger.app.AppContainer
 import com.brickledger.app.BuildConfig
+import com.brickledger.app.data.AppUpdates
 import com.brickledger.app.core.Dates
 import com.brickledger.app.core.Vocab
 import com.brickledger.app.data.SyncManager
@@ -312,6 +313,8 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onSignIn: () -> 
     val snackbar = remember { SnackbarHostState() }
     val web = BuildConfig.WEB_URL
     val pickBackup = rememberBackupPicker(container)
+    val update by container.updates.state.collectAsStateWithLifecycle()
+    var checkingUpdate by remember { mutableStateOf(false) }
 
     ScreenScaffold(title = "Settings", onBack = onBack, snackbar = snackbar) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -398,7 +401,30 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onSignIn: () -> 
                     Text("Sign out")
                 }
             }
-            Text("BrickLedger ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterHorizontally))
+            SectionCard {
+                CardTitle("App version", "BrickLedger ${BuildConfig.VERSION_NAME}")
+                Spacer(Modifier.height(8.dp))
+                when (val u = update) {
+                    is AppUpdates.State.Available -> Button(onClick = container.updates::startDownload) { Text("Update to ${u.release.versionName}") }
+                    is AppUpdates.State.Failed -> Button(onClick = container.updates::startDownload) { Text("Update to ${u.release.versionName}") }
+                    is AppUpdates.State.Ready -> Button(onClick = container.updates::install) { Text("Install ${u.release.versionName}") }
+                    is AppUpdates.State.Downloading -> Text("Downloading update…", style = MaterialTheme.typography.bodyMedium)
+                    AppUpdates.State.None -> OutlinedButton(
+                        enabled = !checkingUpdate,
+                        onClick = {
+                            checkingUpdate = true
+                            scope.launch {
+                                when (container.updates.check(manual = true)) {
+                                    AppUpdates.CheckResult.UpToDate -> snackbar.showSnackbar("You’re on the latest version.")
+                                    AppUpdates.CheckResult.Failed -> snackbar.showSnackbar("Couldn’t check for updates. Check your connection and try again.")
+                                    AppUpdates.CheckResult.UpdateAvailable -> Unit // the update prompt opens
+                                }
+                                checkingUpdate = false
+                            }
+                        },
+                    ) { Text(if (checkingUpdate) "Checking…" else "Check for updates") }
+                }
+            }
         }
     }
     if (confirm) {
