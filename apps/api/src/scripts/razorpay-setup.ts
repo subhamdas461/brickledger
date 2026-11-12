@@ -53,10 +53,15 @@ const request: RazorpayRequest = async (method, path, body) => {
     body: body ? JSON.stringify(body) : undefined,
   });
   const json: any = await res.json().catch(() => ({}));
-  if (res.status === 401) fail('Razorpay rejected these keys. Check the Key ID and Key Secret, and that the dashboard is in the matching mode.');
+  if (res.status === 401) fail(`Your keys work, but this Razorpay account can't use Subscriptions yet (Razorpay answered "Unauthorized" for ${path.split('?')[0]}).\nOpen Subscriptions in the dashboard to switch it on, or ask Razorpay support to enable it, then run this again.`);
   if (!res.ok) fail(`Razorpay said: ${json?.error?.description ?? res.statusText}\nIf this mentions Subscriptions, open Subscriptions in the dashboard to switch it on, then run this again.`);
   return json;
 };
+
+// Razorpay answers 401 for bad keys and for accounts without Subscriptions alike, so check the keys
+// on an endpoint every account has. That way the error can name the real problem.
+const keyCheck = await fetch('https://api.razorpay.com/v1/payments?count=1', { headers: { Authorization: `Basic ${auth}` } });
+if (keyCheck.status === 401) fail('Razorpay rejected these keys. Check the Key ID and Key Secret, and that the dashboard is in the matching mode.');
 
 const plans = await ensureRazorpayPlans(request);
 console.log('\nPlans:');
