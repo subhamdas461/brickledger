@@ -299,7 +299,8 @@ export const syncPushSchema = z.object({
         entity: z.string().max(40),
         op: z.enum(['upsert', 'delete']),
         id,
-        data: z.record(z.string(), z.unknown()).optional(),
+        // The Android app sends `"data": null` with deletes; rejecting it failed the whole batch.
+        data: z.record(z.string(), z.unknown()).nullish(),
       }),
     )
     .max(1000),

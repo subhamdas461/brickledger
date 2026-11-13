@@ -68,7 +68,7 @@ Useful scripts (from the repo root):
 
 | Command | What it does |
 |---|---|
-| `npm test` | 60 API integration tests (auth & token rotation, permissions, plan limits, sync, billing webhooks, uploads, PDF/CSV, admin panel, analytics) |
+| `npm test` | 62 API integration tests (auth & token rotation, permissions, plan limits, sync, billing webhooks, uploads, PDF/CSV, admin panel, analytics) |
 | `npm run typecheck` | TypeScript checks for every workspace |
 | `npm run build` | Production build: web (`apps/web/dist`) + bundled API (`apps/api/dist`) |
 | `npm start` | Run the built API (`SERVE_WEB=true` also serves the web app) |

@@ -56,6 +56,22 @@ describe('offline sync', () => {
     expect(p2.cursor).toBeGreaterThan(p1.cursor);
   });
 
+  it('accepts a delete sent the way the Android app sends it (data: null) alongside other changes', async () => {
+    const keep = randomUUID();
+    const gone = randomUUID();
+    await call(t.app, { method: 'POST', url: url(), headers: owner.headers, payload: { mutations: [{ entity: 'tasks', op: 'upsert', id: gone, data: { title: 'Order tiles' } }] } });
+    const res = await call(t.app, {
+      method: 'POST',
+      url: url(),
+      headers: owner.headers,
+      payload: { mutations: [{ entity: 'tasks', op: 'delete', id: gone, data: null }, { entity: 'tasks', op: 'upsert', id: keep, data: { title: 'Fix grills' } }] },
+    });
+    expect(res.results.map((r: any) => r.status)).toEqual(['ok', 'ok']);
+    const tasks = await call(t.app, { method: 'GET', url: `/api/v1/projects/${projectId}/tasks`, headers: owner.headers });
+    expect(tasks.items.map((x: any) => x.id)).toContain(keep);
+    expect(tasks.items.map((x: any) => x.id)).not.toContain(gone);
+  });
+
   it('merges attendance for the same worker and day from two devices', async () => {
     const workerId = randomUUID();
     await call(t.app, { method: 'POST', url: url(), headers: owner.headers, payload: { mutations: [{ entity: 'workers', op: 'upsert', id: workerId, data: { name: 'Lakshmi', dailyWage: 650 } }] } });

@@ -1,6 +1,6 @@
 import { FileCategories, formatBytes, formatDate, todayIso, addDaysIso, type FileItem } from '@brickledger/shared/web';
 import { FolderOpen, Pencil, Upload } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { FormModal } from '../../components/entity-form';
 import { useProjectCtx } from '../../components/layout';
 import { Button } from '../../components/ui/button';
@@ -11,6 +11,7 @@ import { errorMessage } from '../../lib/api';
 import { cn } from '../../lib/cn';
 import { useList, useResourceMutations, useUpload } from '../../lib/queries';
 import { FileThumb, uploadFile, useCanDelete } from './common';
+import { FileViewer } from './FileViewer';
 
 export function Documents() {
   const { pid, canEdit } = useProjectCtx();
@@ -19,6 +20,8 @@ export function Documents() {
   const upload = useUpload(pid);
   const { update, remove } = useResourceMutations(pid, 'files');
   const [editing, setEditing] = useState<FileItem | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
+  const closeViewer = useCallback(() => setViewing(null), []);
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const toast = useToast();
@@ -42,6 +45,7 @@ export function Documents() {
   return (
     <>
       {dialog}
+      <FileViewer files={items} openId={viewing} onOpen={setViewing} onClose={closeViewer} />
       <PageHeader
         title="Documents & photos"
         description="Drawings, approvals, agreements, warranties and every site photo in one place."
@@ -96,7 +100,7 @@ export function Documents() {
               const expiring = f.expiresOn && f.expiresOn <= soon;
               return (
                 <Card key={f.id} className="group overflow-hidden">
-                  <FileThumb file={f} className="aspect-[4/3] rounded-none border-0 border-b" />
+                  <FileThumb file={f} className="aspect-[4/3] rounded-none border-0 border-b" onOpen={() => setViewing(f.id)} />
                   <div className="flex items-start gap-2 p-3">
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium" title={f.name}>

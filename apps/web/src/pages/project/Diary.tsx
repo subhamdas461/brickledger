@@ -1,6 +1,6 @@
 import { Weathers, formatDate, todayIso, type DailyLog, type FileItem } from '@brickledger/shared/web';
 import { BookOpen, Cloud, CloudLightning, CloudRain, Plus, Snowflake, Sun, Thermometer, TriangleExclamationPoint, Users } from 'lucide-react';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { FormModal } from '../../components/entity-form';
 import { useProjectCtx } from '../../components/layout';
 import { Button } from '../../components/ui/button';
@@ -10,6 +10,7 @@ import { useToast } from '../../components/ui/toast';
 import { errorMessage } from '../../lib/api';
 import { useList, useResourceMutations, useUpload } from '../../lib/queries';
 import { Attachments, FileThumb, PendingFilesPicker, uploadFile, useCanDelete } from './common';
+import { FileViewer } from './FileViewer';
 
 const WEATHER_ICON = { sunny: Sun, cloudy: Cloud, rainy: CloudRain, stormy: CloudLightning, hot: Thermometer, cold: Snowflake } as const;
 
@@ -25,6 +26,8 @@ export function Diary() {
   const { confirm, dialog } = useConfirm();
   const existing = editing && editing !== 'new' ? editing : null;
   const canDelete = useCanDelete(existing);
+  const [viewing, setViewing] = useState<{ logId: string; id: string } | null>(null);
+  const closeViewer = useCallback(() => setViewing(null), []);
   if (!logs.data) return <Spinner />;
 
   const photosBy = new Map<string, FileItem[]>();
@@ -33,6 +36,13 @@ export function Diary() {
   return (
     <>
       {dialog}
+      <FileViewer
+        files={viewing ? (photosBy.get(viewing.logId) ?? []) : []}
+        openId={viewing?.id ?? null}
+        onOpen={(id) => setViewing((v) => (v ? { ...v, id } : v))}
+        onClose={closeViewer}
+        noun="photo"
+      />
       <PageHeader
         title="Site diary"
         description="A daily record of work, weather, labour and problems - your memory when disputes come up."
@@ -82,7 +92,7 @@ export function Diary() {
                   {pics.length > 0 && (
                     <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6" onClick={(e) => e.stopPropagation()}>
                       {pics.slice(0, 6).map((f) => (
-                        <FileThumb key={f.id} file={f} className="aspect-square" />
+                        <FileThumb key={f.id} file={f} className="aspect-square" onOpen={() => setViewing({ logId: log.id, id: f.id })} />
                       ))}
                     </div>
                   )}

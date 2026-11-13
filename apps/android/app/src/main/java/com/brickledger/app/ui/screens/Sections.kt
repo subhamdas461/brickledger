@@ -54,8 +54,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,6 +75,8 @@ import com.brickledger.app.core.Money
 import com.brickledger.app.core.Vocab
 import com.brickledger.app.core.fmtQty
 import com.brickledger.app.core.todayIso
+import com.brickledger.app.data.Attachment
+import com.brickledger.app.data.mergeAttachments
 import com.brickledger.app.data.local.ProjectEntity
 import com.brickledger.app.data.local.ProjectFile
 import com.brickledger.app.data.remote.userMessage
@@ -358,7 +363,7 @@ private fun DiarySection(container: AppContainer, nav: ProjectNav, p: ProjectEnt
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         pics.take(4).forEach { f ->
                             AsyncImage(
-                                model = container.repo.fileUrl(f.id),
+                                model = container.repo.fileUrl(f),
                                 contentDescription = f.name,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.size(64.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
@@ -412,11 +417,14 @@ private fun DocumentsSection(container: AppContainer, p: ProjectEntity, snackbar
     val upload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch {
             container.repo.addAttachment(p.id, "document", null, uri, if (context.contentResolver.getType(uri)?.startsWith("image/") == true) "photo" else "other")
-            snackbar.showSnackbar("Added - uploads when online")
+            snackbar.showSnackbar(if (p.isLocal) "Added" else "Added - uploads when online")
         }
     }
     val onPhone by rememberFlowState(p.id, initial = emptyList()) { container.db.uploads().observeForProject(p.id) }
+    var viewing by rememberSaveable { mutableStateOf<String?>(null) }
     val list = files ?: return LoadingBox()
+    // Files kept on the phone (phone-only projects, uploads waiting for a connection) come first.
+    val items = remember(list, onPhone) { mergeAttachments(list, onPhone, queuedFirst = true) }
     Column {
         if (p.canEdit) {
             OutlinedButton(onClick = { upload.launch(arrayOf("image/*", "application/pdf", "*/*")) }, modifier = Modifier.padding(16.dp, 4.dp)) {
@@ -425,64 +433,39 @@ private fun DocumentsSection(container: AppContainer, p: ProjectEntity, snackbar
                 Text(if (p.isLocal) "Add a document or photo" else "Upload a document or photo")
             }
         }
-        if (list.isEmpty() && onPhone.isEmpty()) {
+        if (items.isEmpty()) {
             EmptyView(Icons.Rounded.Folder, "Nothing here yet", "Plans, permits, bills and site photos appear here.")
         } else {
             LazyVerticalGrid(columns = GridCells.Adaptive(150.dp), contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                // Files kept on the phone: phone-only projects, or uploads waiting for a connection.
-                items(onPhone, key = { "u-${it.id}" }) { u ->
-                    SectionCard(padding = 0.dp, onClick = { openFile(context, File(u.path), u.mimeType) }) {
-                        if (u.mimeType.startsWith("image/")) {
-                            AsyncImage(
-                                model = File(u.path),
-                                contentDescription = u.name,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxWidth().aspectRatio(4f / 3f).background(MaterialTheme.colorScheme.surfaceVariant),
-                            )
-                        } else {
-                            Box(Modifier.fillMaxWidth().aspectRatio(4f / 3f).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                                Icon(if (u.mimeType == "application/pdf") Icons.Rounded.PictureAsPdf else Icons.Rounded.Description, null, modifier = Modifier.size(36.dp))
-                            }
-                        }
-                        Column(Modifier.padding(10.dp)) {
-                            Text(u.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            StatusChip(if (p.isLocal) "On this phone" else "Waiting to upload", Tone.Amber, Modifier.padding(top = 4.dp))
-                        }
-                    }
-                }
-                items(list, key = { it.id }) { f -> FileCard(container, f, snackbar) }
+                items(items, key = { it.key }) { a -> DocumentCard(container, a, p.isLocal) { viewing = a.key } }
             }
         }
     }
+    viewing?.let { key -> FileViewer(container, p, items, startKey = key, noun = "file", onDismiss = { viewing = null }) }
 }
 
 @Composable
-private fun FileCard(container: AppContainer, f: ProjectFile, snackbar: SnackbarHostState) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    SectionCard(padding = 0.dp, onClick = {
-        scope.launch {
-            runCatching { container.repo.downloadAttachment(f) }
-                .onSuccess { file -> openFile(context, file, f.mimeType) }
-                .onFailure { snackbar.showSnackbar(it.userMessage()) }
-        }
-    }) {
-        if (f.isImage) {
+private fun DocumentCard(container: AppContainer, a: Attachment, phoneOnly: Boolean, onClick: () -> Unit) {
+    SectionCard(padding = 0.dp, onClick = onClick) {
+        if (a.isImage) {
             AsyncImage(
-                model = container.repo.fileUrl(f.id),
-                contentDescription = f.name,
+                model = attachmentModel(container, a),
+                contentDescription = a.name,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxWidth().aspectRatio(4f / 3f).background(MaterialTheme.colorScheme.surfaceVariant),
             )
         } else {
             Box(Modifier.fillMaxWidth().aspectRatio(4f / 3f).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                Icon(if (f.mimeType == "application/pdf") Icons.Rounded.PictureAsPdf else Icons.Rounded.Description, null, modifier = Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(if (a.mimeType == "application/pdf") Icons.Rounded.PictureAsPdf else Icons.Rounded.Description, null, modifier = Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Column(Modifier.padding(10.dp)) {
-            Text(f.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(Vocab.label(Vocab.fileCategories, f.category), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            f.expiresOn?.let { StatusChip("Expires ${Dates.short(it)}", if (it < todayIso()) Tone.Red else Tone.Amber, Modifier.padding(top = 4.dp)) }
+            Text(a.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            when {
+                a.waiting -> StatusChip(if (phoneOnly) "On this phone" else "Waiting to upload", Tone.Amber, Modifier.padding(top = 4.dp))
+                else -> Text(Vocab.label(Vocab.fileCategories, a.category), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            a.file?.expiresOn?.let { StatusChip("Expires ${Dates.short(it)}", if (it < todayIso()) Tone.Red else Tone.Amber, Modifier.padding(top = 4.dp)) }
         }
     }
 }

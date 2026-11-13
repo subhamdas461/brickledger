@@ -15,6 +15,7 @@ import {
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { api } from './api';
+import { compressImage } from './image';
 
 export type Params = Record<string, string | number | boolean | undefined | null>;
 export interface ListResult<T> {
@@ -117,6 +118,20 @@ export function useUpload(pid: string) {
   const refresh = useRefreshProject(pid);
   return useMutation({
     mutationFn: (form: FormData) => api<EntityMap['files']>(`/projects/${pid}/files`, { method: 'POST', body: form }),
+    onSuccess: refresh,
+  });
+}
+
+/** Swaps a file's content and keeps its details. Images are compressed first, like new uploads. */
+export function useReplaceFile(pid: string) {
+  const refresh = useRefreshProject(pid);
+  return useMutation({
+    mutationFn: async ({ id, file }: { id: string; file: File }) => {
+      const prepared = await compressImage(file);
+      const form = new FormData();
+      form.append('file', prepared, prepared.name);
+      return api<EntityMap['files']>(`/projects/${pid}/files/${id}/content`, { method: 'PUT', body: form });
+    },
     onSuccess: refresh,
   });
 }

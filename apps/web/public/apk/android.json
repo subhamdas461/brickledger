@@ -1,10 +1,10 @@
 {
-  "versionName": "1.0.3",
-  "versionCode": 4,
-  "size": 2470180,
-  "sha256": "c9964ad8c5bc18838f030b77e1be36bcb82fb1848fb5a5e6936fdcb2cd8323d2",
+  "versionName": "1.0.4",
+  "versionCode": 5,
+  "size": 2502948,
+  "sha256": "37e6bbf97f53b77365ac4d2f711afca0b549600d4aff1e2b34c6fcda0c28171d",
   "minAndroid": "8.0",
-  "url": "/api/v1/public/download/android?source=update&v=1.0.3",
-  "publishedAt": "2026-11-09T14:12:13.564Z",
-  "notes": "Small improvements and fixes."
+  "url": "/api/v1/public/download/android?source=update&v=1.0.4",
+  "publishedAt": "2026-11-13T13:52:24.900Z",
+  "notes": "Tap any bill or photo to open it full screen: swipe between them, zoom in, and edit, replace or delete it."
 }

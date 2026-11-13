@@ -18,7 +18,7 @@ import {
   Stamp,
   Zap,
 } from 'lucide-react';
-import { useRef, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { useProjectCtx } from '../../components/layout';
 import { Button } from '../../components/ui/button';
 import { useToast } from '../../components/ui/toast';
@@ -27,6 +27,7 @@ import { useAuth } from '../../lib/auth';
 import { cn } from '../../lib/cn';
 import { compressImage } from '../../lib/image';
 import { useList, useUpload } from '../../lib/queries';
+import { FileViewer } from './FileViewer';
 
 /** Mirrors the server rule: managers delete anything, contributors only what they created. */
 export function useCanDelete(entity: { createdBy: string | null } | null | undefined): boolean {
@@ -128,38 +129,50 @@ export async function uploadFile(
   return upload.mutateAsync(form);
 }
 
-export function FileThumb({ file, className }: { file: FileItem; className?: string }) {
+/** A file's thumbnail. With `onOpen` it opens the in-page viewer; without, the file in a new tab. */
+export function FileThumb({ file, className, onOpen }: { file: FileItem; className?: string; onOpen?: () => void }) {
   const isImage = file.mimeType.startsWith('image/');
+  const classes = cn(
+    'group relative block w-full overflow-hidden rounded-xl border border-stone-200 bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-stone-700 dark:bg-stone-800',
+    onOpen && 'cursor-zoom-in',
+    className,
+  );
+  const inner = isImage ? (
+    <img src={file.url} alt={file.name} loading="lazy" className="size-full object-cover transition group-hover:scale-[1.03]" />
+  ) : (
+    <div className="flex size-full flex-col items-center justify-center gap-1 p-2 text-center">
+      {file.mimeType === 'application/pdf' ? <FileText className="size-6 text-red-500" /> : <File className="size-6 text-stone-400" />}
+      <span className="line-clamp-2 text-[11px] text-stone-600 dark:text-stone-300">{file.name}</span>
+    </div>
+  );
+  const title = `${file.name} · ${formatBytes(file.sizeBytes)}`;
+  if (onOpen) {
+    return (
+      <button type="button" title={title} aria-label={`View ${file.name}`} onClick={onOpen} className={classes}>
+        {inner}
+      </button>
+    );
+  }
   return (
-    <a
-      href={file.url}
-      target="_blank"
-      rel="noreferrer"
-      title={`${file.name} · ${formatBytes(file.sizeBytes)}`}
-      className={cn('group relative block overflow-hidden rounded-xl border border-stone-200 bg-stone-50 dark:border-stone-700 dark:bg-stone-800', className)}
-    >
-      {isImage ? (
-        <img src={file.url} alt={file.name} loading="lazy" className="size-full object-cover transition group-hover:scale-[1.03]" />
-      ) : (
-        <div className="flex size-full flex-col items-center justify-center gap-1 p-2 text-center">
-          {file.mimeType === 'application/pdf' ? <FileText className="size-6 text-red-500" /> : <File className="size-6 text-stone-400" />}
-          <span className="line-clamp-2 text-[11px] text-stone-600 dark:text-stone-300">{file.name}</span>
-        </div>
-      )}
+    <a href={file.url} target="_blank" rel="noreferrer" title={title} className={classes}>
+      {inner}
     </a>
   );
 }
 
-/** Photos/receipts attached to an entity, with upload for contributors. */
+/** Photos/receipts attached to an entity: tap one to view, edit, replace or delete it. */
 export function Attachments({ entityType, entityId, label = 'Photos & receipts' }: { entityType: string; entityId: string; label?: string }) {
   const { pid, canEdit } = useProjectCtx();
   const files = useList(pid, 'files', { entityType, entityId }, Boolean(entityId));
   const upload = useUpload(pid);
   const toast = useToast();
   const input = useRef<HTMLInputElement>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
+  const closeViewer = useCallback(() => setViewing(null), []);
   const items = files.data?.items ?? [];
   return (
     <div className="mt-6 border-t border-stone-100 pt-5 dark:border-stone-800">
+      <FileViewer files={items} openId={viewing} onOpen={setViewing} onClose={closeViewer} noun={entityType === 'expense' ? 'bill' : 'photo'} />
       <div className="mb-3 flex items-center justify-between">
         <p className="text-sm font-medium text-stone-700 dark:text-stone-300">{label}</p>
         {canEdit && (
@@ -191,7 +204,7 @@ export function Attachments({ entityType, entityId, label = 'Photos & receipts' 
       {items.length ? (
         <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
           {items.map((f) => (
-            <FileThumb key={f.id} file={f} className="aspect-square" />
+            <FileThumb key={f.id} file={f} className="aspect-square" onOpen={() => setViewing(f.id)} />
           ))}
         </div>
       ) : (

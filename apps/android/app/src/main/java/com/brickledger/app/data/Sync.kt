@@ -15,6 +15,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.brickledger.app.BrickLedgerApp
 import com.brickledger.app.core.AppJson
+import com.brickledger.app.core.nowIso
 import com.brickledger.app.data.local.AppDatabase
 import com.brickledger.app.data.local.Attendance
 import com.brickledger.app.data.local.Category
@@ -24,6 +25,7 @@ import com.brickledger.app.data.local.Fund
 import com.brickledger.app.data.local.Issue
 import com.brickledger.app.data.local.Material
 import com.brickledger.app.data.local.Movement
+import com.brickledger.app.data.local.PendingUpload
 import com.brickledger.app.data.local.Phase
 import com.brickledger.app.data.local.ProjectEntity
 import com.brickledger.app.data.local.ProjectFile
@@ -206,7 +208,8 @@ class SyncEngine(
 
     private suspend fun uploadPending(projectId: String, errors: MutableList<String>) {
         for (u in db.uploads().forProject(projectId)) {
-            if (u.entityId != null) {
+            // A replacement's file is already on the server; a new upload waits for the record it belongs to.
+            if (u.replacesId == null && u.entityId != null) {
                 when (entityState(u.entityType, u.entityId)) {
                     null -> { // the entity was deleted - nothing to attach to
                         db.uploads().delete(u.id)
@@ -222,32 +225,55 @@ class SyncEngine(
                 db.uploads().delete(u.id)
                 continue
             }
-            val parts = buildList {
-                add(MultipartBody.Part.createFormData("id", u.id))
-                add(MultipartBody.Part.createFormData("name", u.name))
-                add(MultipartBody.Part.createFormData("category", u.category))
-                add(MultipartBody.Part.createFormData("entityType", u.entityType))
-                u.entityId?.let { add(MultipartBody.Part.createFormData("entityId", it)) }
-                add(MultipartBody.Part.createFormData("file", u.fileName, file.asRequestBody(u.mimeType.toMediaType())))
-            }
-            try {
-                val saved = api.upload(projectId, parts)
-                db.files().upsert(saved)
-                db.uploads().delete(u.id)
-                file.delete()
+            val content = MultipartBody.Part.createFormData("file", u.fileName, file.asRequestBody(u.mimeType.toMediaType()))
+            val saved = try {
+                if (u.replacesId != null) {
+                    api.replaceContent(projectId, u.replacesId, content)
+                } else {
+                    api.upload(projectId, buildList {
+                        add(MultipartBody.Part.createFormData("id", u.id))
+                        add(MultipartBody.Part.createFormData("name", u.name))
+                        add(MultipartBody.Part.createFormData("category", u.category))
+                        add(MultipartBody.Part.createFormData("entityType", u.entityType))
+                        u.entityId?.let { add(MultipartBody.Part.createFormData("entityId", it)) }
+                        add(content)
+                    })
+                }
             } catch (e: HttpException) {
                 val code = e.code()
                 if (code == 402 || code == 413) {
                     errors += e.userMessage() // plan/storage limit: keep it for later
                 } else if (code in 400..499 && code != 401 && code != 408 && code != 429) {
-                    errors += e.userMessage()
+                    errors += e.userMessage() // e.g. the file was deleted on the server, or no permission
                     db.uploads().delete(u.id)
                     file.delete()
                 } else {
                     throw e
                 }
+                continue
             }
+            val local = db.files().get(saved.id)
+            // An edit made on the phone and not yet sent (a rename, a delete) still wins; the new picture's details are taken.
+            db.files().upsert(
+                if (local?.dirty == true) local.copy(fileName = saved.fileName, mimeType = saved.mimeType, sizeBytes = saved.sizeBytes, updatedAt = saved.updatedAt) else saved,
+            )
+            settle(u, saved)
         }
+    }
+
+    /** The queue entry can change while it is being sent: replaced again, renamed or deleted. None of that may be lost. */
+    private suspend fun settle(sent: PendingUpload, saved: ProjectFile) {
+        val now = db.uploads().get(sent.id)
+        when {
+            // Deleted on the phone mid-upload: delete it on the server too (next sync).
+            now == null -> if (sent.replacesId == null) db.files().upsert(saved.withLocal(1, deletedAt = nowIso()))
+            // A newer picture was chosen mid-upload: send it next, as a replacement.
+            now.path != sent.path -> db.uploads().upsert(now.copy(replacesId = saved.id))
+            else -> db.uploads().delete(sent.id)
+        }
+        // Renamed on the phone mid-upload (only possible before its first upload).
+        if (now != null && sent.replacesId == null && now.name != sent.name) db.files().upsert(saved.copy(name = now.name).withLocal(1))
+        File(sent.path).delete()
     }
 }
 

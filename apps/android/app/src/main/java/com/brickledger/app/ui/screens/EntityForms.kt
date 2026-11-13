@@ -43,6 +43,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +63,7 @@ import com.brickledger.app.core.fmtQty
 import com.brickledger.app.core.newId
 import com.brickledger.app.core.todayIso
 import com.brickledger.app.data.Images
+import com.brickledger.app.data.mergeAttachments
 import com.brickledger.app.data.local.Category
 import com.brickledger.app.data.local.DailyLog
 import com.brickledger.app.data.local.Expense
@@ -584,7 +586,7 @@ fun EntityFormScreen(container: AppContainer, route: FormRoute, onDone: () -> Un
             FormFields(spec.fields, values, errors, p.currency, enabled = canEdit)
             if (spec.attachType != null) {
                 Spacer(Modifier.height(16.dp))
-                Attachments(container, pid, spec.attachType, entityId, canEdit, phoneOnly = p.isLocal)
+                Attachments(container, p, spec.attachType, entityId)
             }
             if (canEdit) {
                 Spacer(Modifier.height(24.dp))
@@ -614,56 +616,37 @@ fun EntityFormScreen(container: AppContainer, route: FormRoute, onDone: () -> Un
     }
 }
 
-/** Photos and receipts for one record; queued offline and uploaded in the background. */
+/** Photos and bills for one record; queued offline and uploaded in the background. Tap one to view, edit, replace or delete it. */
 @Composable
-fun Attachments(container: AppContainer, projectId: String, entityType: String, entityId: String, canEdit: Boolean, phoneOnly: Boolean = false) {
+fun Attachments(container: AppContainer, project: ProjectEntity, entityType: String, entityId: String) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val files by rememberFlowState(entityId, initial = emptyList()) { container.db.files().observeForEntity(entityId) }
-    val pending by rememberFlowState(entityId, initial = emptyList()) { container.db.uploads().observeForEntity(entityId) }
+    val queue by rememberFlowState(entityId, initial = emptyList()) { container.db.uploads().observeForEntity(entityId) }
+    val items = remember(files, queue) { mergeAttachments(files, queue) }
+    var viewing by rememberSaveable { mutableStateOf<String?>(null) }
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
-    val category = if (entityType == "expense") "receipt" else "photo"
+    val bills = entityType == "expense"
+    val category = if (bills) "receipt" else "photo"
     val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         val uri = cameraUri
-        if (ok && uri != null) scope.launch { container.repo.addAttachment(projectId, entityType, entityId, uri, category) }
+        if (ok && uri != null) scope.launch { container.repo.addAttachment(project.id, entityType, entityId, uri, category) }
     }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) scope.launch { container.repo.addAttachment(projectId, entityType, entityId, uri, category) }
+        if (uri != null) scope.launch { container.repo.addAttachment(project.id, entityType, entityId, uri, category) }
     }
     Column {
-        SectionLabel(if (entityType == "expense") "Receipts & bills" else "Photos")
-        if (files.isEmpty() && pending.isEmpty()) {
+        SectionLabel(if (bills) "Receipts & bills" else "Photos")
+        if (items.isEmpty()) {
             Text("Nothing attached yet.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(files, key = { it.id }) { f ->
-                    AsyncImage(
-                        model = container.repo.fileUrl(f.id),
-                        contentDescription = f.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(88.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
-                    )
-                }
-                items(pending, key = { it.id }) { u ->
-                    Box {
-                        AsyncImage(
-                            model = java.io.File(u.path),
-                            contentDescription = u.name,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.size(88.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
-                        )
-                        // Phone-only projects keep photos on the phone; nothing is queued for upload.
-                        if (!phoneOnly) Icon(
-                            Icons.Rounded.Sync,
-                            contentDescription = "Waiting to upload",
-                            tint = Color.White,
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp).size(18.dp).clip(RoundedCornerShape(50)).background(Color(0x99000000)).padding(2.dp),
-                        )
-                    }
+                items(items, key = { it.key }) { a ->
+                    AttachmentThumb(container, a, phoneOnly = project.isLocal, modifier = Modifier.size(88.dp)) { viewing = a.key }
                 }
             }
         }
-        if (canEdit) {
+        if (project.canEdit) {
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = {
@@ -683,6 +666,9 @@ fun Attachments(container: AppContainer, projectId: String, entityType: String, 
                 }
             }
         }
+    }
+    viewing?.let { key ->
+        FileViewer(container, project, items, startKey = key, noun = if (bills) "bill" else "photo", onDismiss = { viewing = null })
     }
 }
 

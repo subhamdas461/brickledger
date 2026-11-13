@@ -111,6 +111,9 @@ interface UploadDao {
 
     @Upsert suspend fun upsert(u: PendingUpload)
 
+    @Query("SELECT * FROM pending_uploads WHERE id = :id")
+    suspend fun get(id: String): PendingUpload?
+
     @Query("DELETE FROM pending_uploads WHERE id = :id")
     suspend fun delete(id: String)
 

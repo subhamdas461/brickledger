@@ -101,6 +101,8 @@ data class PendingUpload(
     val createdAt: Long = System.currentTimeMillis(),
     val attempts: Int = 0,
     val error: String? = null,
+    /** Set when this is a new picture for a file already on the server: it replaces that file's content. */
+    val replacesId: String? = null,
 )
 
 // ------------------------------------------------------------------ synced entities

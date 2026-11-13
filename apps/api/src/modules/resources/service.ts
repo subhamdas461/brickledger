@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { listQuerySchema } from '@brickledger/shared';
 import { and, count, eq, gte, ilike, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import type { DB, Executor } from '../../db/client';
@@ -21,11 +21,15 @@ export interface ServiceCtx {
 
 const nextSeq = sql`nextval('sync_seq')`;
 
-/** Public shape of a row: storage internals stripped, signed URL added for files. */
+/**
+ * Public shape of a row: storage internals stripped, signed URL added for files. The URL carries
+ * a tag of the stored object, so replacing a file's content changes its URL and no cache shows the old one.
+ */
 export function serializeRow(def: ResourceDef, row: Row, tokens: TokenService): Row {
   if (def.key !== 'files') return row;
-  const { storageKey: _omit, ...rest } = row;
-  return { ...rest, url: tokens.signFileUrl(row.id) };
+  const { storageKey, ...rest } = row;
+  const version = storageKey ? `&v=${createHash('sha256').update(String(storageKey)).digest('base64url').slice(0, 10)}` : '';
+  return { ...rest, url: `${tokens.signFileUrl(row.id)}${version}` };
 }
 
 function escapeLike(value: string): string {

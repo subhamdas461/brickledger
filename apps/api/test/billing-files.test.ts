@@ -1,9 +1,11 @@
 import { createHmac } from 'node:crypto';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config';
+import { files as filesTable } from '../src/db/schema';
 import { RazorpayProvider, StripeProvider } from '../src/modules/billing/providers';
 import { applyBillingEvent } from '../src/modules/billing/service';
-import { buildTestApp, call, createProject, multipart, registerUser, type TestApp, type TestUser } from './helpers';
+import { addMember, buildTestApp, call, createProject, multipart, registerUser, type TestApp, type TestUser } from './helpers';
 
 let t: TestApp;
 let owner: TestUser;
@@ -95,6 +97,56 @@ describe('files', () => {
 
     await call(t.app, { method: 'DELETE', url: `/api/v1/projects/${project.id}/files/${file.id}`, headers: owner.headers });
     expect((await t.app.inject({ method: 'GET', url: file.url })).statusCode).toBe(404);
+  });
+
+  it('replaces a file’s content, keeping its details, and only for the right people', async () => {
+    const manager = await registerUser(t.app, 'Manager'); // fresh trial: the shared manager is on the free plan by now
+    const project = await createProject(t.app, manager, { useTemplates: false, name: 'Replace test' });
+    const url = (path: string) => `/api/v1/projects/${project.id}${path}`;
+    const upload = async (user: TestUser, name: string) => {
+      const form = multipart({ name, entityType: 'expense', category: 'receipt', notes: 'GST bill' }, { name: 'bill.png', type: 'image/png', content: png });
+      return call(t.app, { method: 'POST', url: url('/files'), headers: { ...user.headers, ...form.headers }, payload: form.payload, expect: 201 });
+    };
+    const replace = (user: TestUser, fileId: string, file: { name: string; type: string; content: Buffer }) => {
+      const form = multipart({}, file);
+      return t.app.inject({ method: 'PUT', url: url(`/files/${fileId}/content`), headers: { ...user.headers, ...form.headers }, payload: form.payload });
+    };
+    const stored = async (fileId: string) => (await t.database.db.select().from(filesTable).where(eq(filesTable.id, fileId)))[0]!;
+
+    const bill = await upload(manager, 'Cement bill');
+    const before = await stored(bill.id);
+    const pdf = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF');
+    const res = await replace(manager, bill.id, { name: 'scan.pdf', type: 'application/pdf', content: pdf });
+    expect(res.statusCode).toBe(200);
+    const replaced = res.json();
+    expect(replaced).toMatchObject({ id: bill.id, name: 'Cement bill', category: 'receipt', notes: 'GST bill', entityType: 'expense', fileName: 'scan.pdf', mimeType: 'application/pdf', sizeBytes: pdf.length });
+    expect(replaced.storageKey).toBeUndefined();
+    expect(replaced.url).not.toBe(bill.url); // caches can't serve the old bill
+    const served = await t.app.inject({ method: 'GET', url: replaced.url });
+    expect(served.rawPayload.equals(pdf)).toBe(true);
+
+    const after = await stored(bill.id);
+    expect(after.storageKey).not.toBe(before.storageKey);
+    expect(await t.app.ctx.storage.get(before.storageKey)).toBeNull(); // old copy removed
+    expect(Number(after.serverSeq)).toBeGreaterThan(Number(before.serverSeq)); // phones pick it up on sync
+
+    const contributor = await registerUser(t.app, 'Site Engineer');
+    const viewer = await registerUser(t.app, 'Client');
+    await addMember(t.app, manager, project.id, contributor, 'contributor');
+    await addMember(t.app, manager, project.id, viewer, 'viewer');
+    const photo = { name: 'retake.png', type: 'image/png', content: png };
+    expect((await replace(contributor, bill.id, photo)).statusCode).toBe(403);
+    expect((await replace(viewer, bill.id, photo)).statusCode).toBe(403);
+    const own = await upload(contributor, 'Sand bill');
+    expect((await replace(contributor, own.id, photo)).statusCode).toBe(200);
+
+    // A rejected upload leaves the bill as it was.
+    expect((await replace(manager, bill.id, { name: 'x.html', type: 'text/html', content: Buffer.from('<b>') })).statusCode).toBe(400);
+    expect((await stored(bill.id)).storageKey).toBe(after.storageKey);
+    expect((await replace(manager, '00000000-0000-4000-8000-000000000000', photo)).statusCode).toBe(404);
+
+    const activity = await call(t.app, { method: 'GET', url: url('/activity'), headers: manager.headers });
+    expect(JSON.stringify(activity)).toContain('Replaced file \\"Cement bill\\"');
   });
 
   it('rejects unsafe file types', async () => {

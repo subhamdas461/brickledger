@@ -10,6 +10,7 @@ import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -38,6 +39,11 @@ interface ApiService {
     @Multipart
     @POST("api/v1/projects/{id}/files")
     suspend fun upload(@Path("id") projectId: String, @Part parts: List<MultipartBody.Part>): ProjectFile
+
+    /** New content for an existing file; its id, name, notes and links stay. */
+    @Multipart
+    @PUT("api/v1/projects/{id}/files/{fileId}/content")
+    suspend fun replaceContent(@Path("id") projectId: String, @Path("fileId") fileId: String, @Part file: MultipartBody.Part): ProjectFile
 
     @GET("api/v1/projects/{id}/members") suspend fun members(@Path("id") projectId: String): MembersResponse
     @POST("api/v1/projects/{id}/invites") suspend fun invite(@Path("id") projectId: String, @Body body: InviteRequest): InviteResponse

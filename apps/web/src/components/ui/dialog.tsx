@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { cn } from '../../lib/cn';
 import { Button } from './button';
 
@@ -25,6 +25,7 @@ export function Modal({
   size?: 'sm' | 'md' | 'lg' | 'xl';
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -35,8 +36,12 @@ export function Modal({
   return (
     <dialog
       ref={ref}
+      aria-labelledby={titleId}
       onCancel={(e) => {
         e.preventDefault();
+        // React passes the event to windows underneath (e.g. a photo viewer inside an expense):
+        // Esc closes only the top one.
+        e.stopPropagation();
         onClose();
       }}
       onMouseDown={(e) => {
@@ -53,7 +58,9 @@ export function Modal({
       <div className="flex max-h-[calc(100dvh-2rem)] flex-col">
         <div className="flex items-start justify-between gap-4 border-b border-stone-100 px-6 py-4 dark:border-stone-800">
           <div>
-            <h2 className="text-lg font-semibold">{title}</h2>
+            <h2 id={titleId} className="text-lg font-semibold">
+              {title}
+            </h2>
             {description && <p className="mt-0.5 text-sm text-stone-500 dark:text-stone-400">{description}</p>}
           </div>
           <button aria-label="Close" onClick={onClose} className="-mr-2 rounded-lg p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:hover:bg-stone-800">

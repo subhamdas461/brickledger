@@ -12,10 +12,11 @@ import androidx.room.RoomDatabase
         Category::class, Phase::class, Vendor::class, Material::class, Movement::class, Worker::class,
         Attendance::class, Expense::class, SiteTask::class, DailyLog::class, Fund::class, Issue::class, ProjectFile::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
-    // v2: projects.isLocal (offline mode). Auto-migrations keep data on app updates.
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    // v2: projects.isLocal (offline mode). v3: pending_uploads.replacesId (replacing a bill's picture).
+    // Auto-migrations keep data on app updates.
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun projects(): ProjectDao

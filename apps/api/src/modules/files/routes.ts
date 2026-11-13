@@ -1,17 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
 import { fileSchema } from '@brickledger/shared';
-import { and, eq, isNull } from 'drizzle-orm';
-import type { FastifyInstance } from 'fastify';
+import { and, eq, isNull, sql } from 'drizzle-orm';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { files } from '../../db/schema';
-import { AppError, badRequest, notFound } from '../../lib/errors';
+import { AppError, badRequest, forbidden, notFound } from '../../lib/errors';
 import { isUuid } from '../../lib/util';
 import { parse } from '../../lib/validate';
 import { logActivity } from '../activity';
 import { assertStorage } from '../billing/limits';
 import { loadProjectAccess, projectAccess, requireRole } from '../projects/access';
 import { RESOURCES } from '../resources/registry';
-import { serializeRow } from '../resources/service';
+import { findRow, serializeRow } from '../resources/service';
 
 /** Allowed upload types -> stored extension. SVG/HTML are deliberately excluded (XSS). */
 const ALLOWED: Record<string, string> = {
@@ -38,9 +38,45 @@ const ALLOWED: Record<string, string> = {
 const CAD_EXTENSIONS = new Set(['.dwg', '.dxf']);
 const INLINE = (mime: string) => mime.startsWith('image/') || mime === 'application/pdf';
 
+interface Upload {
+  buffer: Buffer;
+  filename: string;
+  mime: string;
+  /** Extension used in the storage key. */
+  storedExt: string;
+}
+
+/** Reads a multipart request: the `file` part plus any text fields. Rejects empty, oversized and unsafe files. */
+async function readUpload(req: FastifyRequest, maxMb: number): Promise<{ fields: Record<string, string>; upload: Upload }> {
+  if (!req.isMultipart()) throw badRequest('Send the file as multipart/form-data.');
+  const fields: Record<string, string> = {};
+  let raw: { buffer: Buffer; filename: string; mimetype: string } | null = null;
+  try {
+    for await (const part of req.parts({ limits: { fileSize: maxMb * 1024 * 1024, files: 1, fields: 20 } })) {
+      if (part.type === 'file') {
+        const buffer = await part.toBuffer();
+        if (part.file.truncated) throw new AppError(413, 'PAYLOAD_TOO_LARGE', `Files can be up to ${maxMb} MB.`);
+        raw = { buffer, filename: part.filename || 'upload', mimetype: part.mimetype };
+      } else {
+        fields[part.fieldname] = String(part.value ?? '');
+      }
+    }
+  } catch (err: any) {
+    if (err instanceof AppError) throw err;
+    if (err?.code === 'FST_REQ_FILE_TOO_LARGE') throw new AppError(413, 'PAYLOAD_TOO_LARGE', `Files can be up to ${maxMb} MB.`);
+    throw err;
+  }
+  if (!raw || raw.buffer.length === 0) throw badRequest('Choose a file to upload.');
+
+  const ext = extname(raw.filename).toLowerCase();
+  const mime = raw.mimetype.toLowerCase();
+  const cad = mime === 'application/octet-stream' && CAD_EXTENSIONS.has(ext);
+  if (!cad && !ALLOWED[mime]) throw badRequest('This file type is not supported. Upload images, PDFs, Office documents or drawings.');
+  return { fields, upload: { buffer: raw.buffer, filename: raw.filename.slice(0, 200), mime, storedExt: ALLOWED[mime] ?? ext } };
+}
+
 export async function fileRoutes(app: FastifyInstance) {
   const { db, tokens, storage, config } = app.ctx;
-  const maxBytes = config.MAX_UPLOAD_MB * 1024 * 1024;
 
   /**
    * multipart/form-data: `file` plus optional fields id, name, category, entityType,
@@ -49,32 +85,7 @@ export async function fileRoutes(app: FastifyInstance) {
   app.post<{ Params: { projectId: string } }>('/projects/:projectId/files', { onRequest: app.authenticate }, async (req, reply) => {
     const access = await projectAccess(req, req.params.projectId);
     requireRole(access, 'contributor', 'upload files');
-    if (!req.isMultipart()) throw badRequest('Send the file as multipart/form-data.');
-
-    const fields: Record<string, string> = {};
-    let upload: { buffer: Buffer; filename: string; mimetype: string } | null = null;
-    try {
-      for await (const part of req.parts({ limits: { fileSize: maxBytes, files: 1, fields: 20 } })) {
-        if (part.type === 'file') {
-          const buffer = await part.toBuffer();
-          if (part.file.truncated) throw new AppError(413, 'PAYLOAD_TOO_LARGE', `Files can be up to ${config.MAX_UPLOAD_MB} MB.`);
-          upload = { buffer, filename: part.filename || 'upload', mimetype: part.mimetype };
-        } else {
-          fields[part.fieldname] = String(part.value ?? '');
-        }
-      }
-    } catch (err: any) {
-      if (err instanceof AppError) throw err;
-      if (err?.code === 'FST_REQ_FILE_TOO_LARGE') throw new AppError(413, 'PAYLOAD_TOO_LARGE', `Files can be up to ${config.MAX_UPLOAD_MB} MB.`);
-      throw err;
-    }
-    if (!upload || upload.buffer.length === 0) throw badRequest('Choose a file to upload.');
-
-    const ext = extname(upload.filename).toLowerCase();
-    let mime = upload.mimetype.toLowerCase();
-    if (mime === 'application/octet-stream' && CAD_EXTENSIONS.has(ext)) mime = 'application/octet-stream';
-    else if (!ALLOWED[mime]) throw badRequest('This file type is not supported. Upload images, PDFs, Office documents or drawings.');
-    const storedExt = ALLOWED[mime] ?? ext;
+    const { fields, upload } = await readUpload(req, config.MAX_UPLOAD_MB);
 
     // Idempotent retry from an offline client.
     const clientId = isUuid(fields.id) ? fields.id : null;
@@ -85,7 +96,7 @@ export async function fileRoutes(app: FastifyInstance) {
 
     const meta = parse(fileSchema, {
       name: fields.name || upload.filename.replace(/\.[^.]+$/, '') || 'File',
-      category: fields.category || (mime.startsWith('image/') ? 'photo' : 'other'),
+      category: fields.category || (upload.mime.startsWith('image/') ? 'photo' : 'other'),
       entityType: fields.entityType || null,
       entityId: fields.entityId || null,
       expiresOn: fields.expiresOn || null,
@@ -94,8 +105,8 @@ export async function fileRoutes(app: FastifyInstance) {
 
     await assertStorage(db, access.org, upload.buffer.length);
     const id = clientId ?? randomUUID();
-    const storageKey = `${access.project.id}/${id}${storedExt}`;
-    await storage.put(storageKey, upload.buffer, mime);
+    const storageKey = `${access.project.id}/${id}${upload.storedExt}`;
+    await storage.put(storageKey, upload.buffer, upload.mime);
 
     const row = await db.transaction(async (tx) => {
       const [inserted] = await tx
@@ -104,8 +115,8 @@ export async function fileRoutes(app: FastifyInstance) {
           ...meta,
           id,
           projectId: access.project.id,
-          fileName: upload.filename.slice(0, 200),
-          mimeType: mime,
+          fileName: upload.filename,
+          mimeType: upload.mime,
           sizeBytes: upload.buffer.length,
           storageKey,
           createdBy: access.userId,
@@ -123,6 +134,61 @@ export async function fileRoutes(app: FastifyInstance) {
       return inserted!;
     });
     reply.code(201);
+    return serializeRow(RESOURCES.files, row, tokens);
+  });
+
+  /**
+   * Replaces a file's content (multipart `file`), keeping its id, name, notes and what it's attached to.
+   * Like deleting, it destroys the original, so contributors may only replace files they added.
+   */
+  app.put<{ Params: { projectId: string; fileId: string } }>('/projects/:projectId/files/:fileId/content', { onRequest: app.authenticate }, async (req) => {
+    const access = await projectAccess(req, req.params.projectId);
+    requireRole(access, 'contributor', 'replace files');
+    const existing = await findRow(db, RESOURCES.files, access.project.id, req.params.fileId);
+    if (!existing) throw notFound('File');
+    if (access.role !== 'manager' && existing.createdBy !== access.userId) {
+      throw forbidden('Contributors can only replace files they added. Ask a project manager.');
+    }
+    const { upload } = await readUpload(req, config.MAX_UPLOAD_MB);
+
+    const growth = upload.buffer.length - Number(existing.sizeBytes ?? 0);
+    if (growth > 0) await assertStorage(db, access.org, growth);
+    // A new key, never the old one: the old object stays intact until the database points elsewhere.
+    const storageKey = `${access.project.id}/${existing.id}-${randomUUID().slice(0, 8)}${upload.storedExt}`;
+    await storage.put(storageKey, upload.buffer, upload.mime);
+
+    let row;
+    try {
+      row = await db.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(files)
+          .set({
+            fileName: upload.filename,
+            mimeType: upload.mime,
+            sizeBytes: upload.buffer.length,
+            storageKey,
+            updatedBy: access.userId,
+            updatedAt: new Date(),
+            serverSeq: sql`nextval('sync_seq')`,
+          })
+          .where(and(eq(files.id, existing.id), isNull(files.deletedAt)))
+          .returning();
+        if (!updated) throw notFound('File');
+        await logActivity(tx, {
+          projectId: access.project.id,
+          userId: access.userId,
+          action: 'update',
+          entityType: 'files',
+          entityId: existing.id,
+          summary: `Replaced file "${existing.name}"`,
+        });
+        return updated;
+      });
+    } catch (err) {
+      await storage.delete(storageKey).catch(() => undefined);
+      throw err;
+    }
+    if (existing.storageKey !== storageKey) await storage.delete(existing.storageKey).catch(() => undefined);
     return serializeRow(RESOURCES.files, row, tokens);
   });
 

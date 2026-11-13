@@ -302,7 +302,8 @@ class Repository(
     /** Zip with backup.json + photos stored on this phone. Share it to Drive, WhatsApp, email... */
     suspend fun exportBackup(projectId: String): File = withContext(Dispatchers.IO) {
         val p = db.projects().get(projectId) ?: error("Project not found")
-        val uploads = db.uploads().forProject(projectId)
+        // A queued replacement belongs to a server file, not to this backup.
+        val uploads = db.uploads().forProject(projectId).filter { it.replacesId == null }
         val backup = Backup(
             exportedAt = nowIso(),
             project = p,
@@ -475,12 +476,58 @@ class Repository(
         }
     }
 
+    /** Renames a photo or bill: synced like any edit, or straight in the queue while it's only on this phone. */
+    suspend fun renameAttachment(a: Attachment, name: String, notes: String? = a.file?.notes) {
+        val clean = name.trim().take(200)
+        if (clean.isEmpty()) return
+        if (a.file != null) save(a.file.copy(name = clean, notes = notes?.trim()?.ifEmpty { null }))
+        else db.uploads().upsert(a.queued!!.copy(name = clean))
+    }
+
+    /**
+     * Swaps the picture and keeps the bill (name, notes, expense). Works offline: a server file gets
+     * its new picture queued and sent when online; one still on the phone is swapped in place.
+     */
+    suspend fun replaceAttachment(a: Attachment, uri: Uri) {
+        val prepared = withContext(Dispatchers.IO) { Images.prepare(context, uri) }
+        val old = a.queued
+        val swapped = { u: PendingUpload -> u.copy(path = prepared.file.absolutePath, fileName = prepared.fileName, mimeType = prepared.mimeType, attempts = 0, error = null) }
+        if (a.file == null) {
+            db.uploads().upsert(swapped(old!!))
+            if (!isLocalProject(old.projectId)) sync.request(old.projectId)
+        } else {
+            val f = a.file
+            val entry = old ?: PendingUpload(
+                id = newId(), projectId = f.projectId, entityType = f.entityType ?: "document", entityId = f.entityId,
+                path = "", fileName = "", mimeType = "", category = f.category, name = f.name, replacesId = f.id,
+            )
+            db.uploads().upsert(swapped(entry))
+            sync.request(f.projectId)
+        }
+        old?.let { File(it.path).delete() }
+    }
+
+    suspend fun deleteAttachment(a: Attachment) {
+        a.queued?.let {
+            db.uploads().delete(it.id)
+            File(it.path).delete()
+        }
+        a.file?.let { delete(it) }
+    }
+
+    /** Opens a file in another app (PDFs, documents): straight from the phone, or downloaded first. */
+    suspend fun localCopy(a: Attachment): File = a.queued?.let { File(it.path) } ?: downloadAttachment(a.file!!)
+
     fun fileUrl(fileId: String) = "${session.baseUrl}api/v1/files/$fileId/content"
+
+    /** Image URL that changes when the file's content does, so no cache shows a replaced picture. */
+    fun fileUrl(file: com.brickledger.app.data.local.ProjectFile) = "${fileUrl(file.id)}?v=${file.sizeBytes}-${(file.updatedAt ?: "").hashCode().toUInt().toString(36)}"
 
     /** Downloads an attachment (authenticated) into cache so it can be opened or shared. */
     suspend fun downloadAttachment(file: com.brickledger.app.data.local.ProjectFile): File = withContext(Dispatchers.IO) {
         val safeName = file.fileName.ifBlank { file.name }.replace(Regex("[\\\\/:*?\"<>|]"), "_")
-        val out = File(File(context.cacheDir, "exports").apply { mkdirs() }, "${file.id.take(8)}-$safeName")
+        val version = (file.updatedAt ?: "").hashCode().toUInt().toString(36)
+        val out = File(File(context.cacheDir, "exports").apply { mkdirs() }, "${file.id.take(8)}-$version-$safeName")
         if (out.exists() && out.length() == file.sizeBytes) return@withContext out
         http.newCall(okhttp3.Request.Builder().url(fileUrl(file.id)).build()).execute().use { res ->
             if (!res.isSuccessful) throw java.io.IOException("Download failed (${res.code})")
