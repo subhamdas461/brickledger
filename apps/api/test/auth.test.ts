@@ -1,5 +1,7 @@
-import { sql } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
+import { desc, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { sessions } from '../src/db/schema';
 import { buildTestApp, call, registerUser, type TestApp } from './helpers';
 
 let t: TestApp;
@@ -61,6 +63,41 @@ describe('auth', () => {
     // The whole token family is now revoked.
     const after = await t.app.inject({ method: 'POST', url: '/api/v1/auth/refresh', payload: { refreshToken: r2.refreshToken } });
     expect(after.statusCode).toBe(401);
+  });
+
+  it('keeps people signed in with no time limit', async () => {
+    const user = await registerUser(t.app);
+    const login = await t.app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { email: user.user.email, password: 'password123' } });
+    const cookie = String(login.headers['set-cookie']);
+    expect(Number(/Max-Age=(\d+)/.exec(cookie)?.[1])).toBe(400 * 86_400); // the longest browsers allow; renewed on every refresh
+    const [row] = await t.database.db.select({ expiresAt: sessions.expiresAt }).from(sessions).where(eq(sessions.userId, user.user.id)).orderBy(desc(sessions.createdAt)).limit(1);
+    expect(row!.expiresAt.getUTCFullYear()).toBe(9999);
+
+    // A session nobody has used for years still refreshes.
+    await t.database.db.execute(sql`update sessions set created_at = now() - interval '3 years' where user_id = ${user.user.id}`);
+    const refreshed = await t.app.inject({ method: 'POST', url: '/api/v1/auth/refresh', payload: { refreshToken: user.refreshToken } });
+    expect(refreshed.statusCode).toBe(200);
+  });
+
+  it('recovers when a refresh reply never reached the phone, without weakening theft detection', async () => {
+    const user = await registerUser(t.app);
+    const age = (token: string) => t.database.db.execute(sql`update sessions set revoked_at = now() - interval '10 minutes' where token_hash = ${createHash('sha256').update(token).digest('hex')}`);
+    // The phone refreshes, the server rotates, but the reply is lost: the phone still holds the old token.
+    const lost = await call(t.app, { method: 'POST', url: '/api/v1/auth/refresh', payload: { refreshToken: user.refreshToken } });
+    await age(user.refreshToken);
+    const retried = await t.app.inject({ method: 'POST', url: '/api/v1/auth/refresh', payload: { refreshToken: user.refreshToken } });
+    expect(retried.statusCode).toBe(200);
+    // Lost twice in a row: still fine.
+    await age(user.refreshToken);
+    const again = await t.app.inject({ method: 'POST', url: '/api/v1/auth/refresh', payload: { refreshToken: user.refreshToken } });
+    expect(again.statusCode).toBe(200);
+    const latest = await call(t.app, { method: 'POST', url: '/api/v1/auth/refresh', payload: { refreshToken: again.json().refreshToken } });
+
+    // The replacement that never arrived is dead, and showing up with it is treated as theft: everything is signed out.
+    await age(lost.refreshToken);
+    const stolen = await t.app.inject({ method: 'POST', url: '/api/v1/auth/refresh', payload: { refreshToken: lost.refreshToken } });
+    expect(stolen.statusCode).toBe(401);
+    expect((await t.app.inject({ method: 'POST', url: '/api/v1/auth/refresh', payload: { refreshToken: latest.refreshToken } })).statusCode).toBe(401);
   });
 
   it('supports the refresh cookie used by the web app', async () => {

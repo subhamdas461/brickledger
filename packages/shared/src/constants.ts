@@ -268,3 +268,25 @@ export const ERROR_CODES = [
   'ACCOUNT_SUSPENDED',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
+
+/**
+ * The project page that shows each kind of record (a web route under /app/p/:id; '' is the overview).
+ * Notifications and activity link through it.
+ */
+export const ENTITY_SECTION: Record<string, string> = {
+  expenses: 'expenses',
+  categories: 'budget',
+  phases: 'schedule',
+  vendors: 'vendors',
+  funds: 'funds',
+  materials: 'materials',
+  movements: 'materials',
+  workers: 'labour',
+  attendance: 'labour',
+  tasks: 'tasks',
+  logs: 'diary',
+  issues: 'issues',
+  files: 'documents',
+  members: 'team',
+  projects: '',
+};

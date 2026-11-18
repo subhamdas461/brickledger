@@ -139,6 +139,10 @@ class Repository(
         session.pendingInvite?.let { token -> runCatching { api.acceptInvite(token) }; session.setPendingInvite(null) }
         refreshProjects()
         sync.schedulePeriodic()
+        // Schedules that a sign-out may have stopped on older versions; KEEP leaves running ones alone.
+        ReminderWorker.schedule(context)
+        ChangeNotifications.schedule(context)
+        ChangeNotifications.checkSoon(context)
     }
 
     suspend fun refreshProfile() = runCatching { session.saveProfile(api.me()) }

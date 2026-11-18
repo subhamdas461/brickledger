@@ -14,7 +14,7 @@ import {
   Users,
 } from 'lucide-react';
 import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { ColumnChart, Meter, SegmentedBar, SERIES, SERIES_DARK_TEXT } from '../../components/charts';
 import { useProjectCtx } from '../../components/layout';
 import { Button, ButtonLink } from '../../components/ui/button';
@@ -35,13 +35,25 @@ const ALERT_STYLE: Record<Alert['severity'], { icon: typeof Info; color: string;
 };
 
 const ALERT_LINK: Partial<Record<string, string>> = {
-  expenses: 'expenses',
+  expenses: 'expenses?status=due',
   categories: 'budget',
   materials: 'materials',
   tasks: 'tasks',
   files: 'documents',
   issues: 'issues',
 };
+
+/** That month's expenses ('2026-03' -> 1 to 31 March). */
+function monthLink(month: string) {
+  const [y, m] = month.split('-').map(Number);
+  const last = new Date(Date.UTC(y!, m!, 0)).getUTCDate();
+  return `expenses?from=${month}-01&to=${month}-${String(last).padStart(2, '0')}`;
+}
+
+/** Expenses in one budget category; uncategorised ones are `none`. */
+function categoryLink(id: string | null | undefined) {
+  return `expenses?categoryId=${id ?? 'none'}`;
+}
 
 export function Dashboard() {
   const { pid, project, canEdit } = useProjectCtx();
@@ -50,6 +62,7 @@ export function Dashboard() {
   const toast = useToast();
   const [adding, setAdding] = useState<Expense | 'new' | null>(null);
   const [view, setView] = useState<'chart' | 'table'>('chart');
+  const navigate = useNavigate();
 
   if (isLoading || !data) {
     return (
@@ -141,10 +154,17 @@ export function Dashboard() {
 
       {/* Hero: the one number this view leads with */}
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="p-6 lg:col-span-2">
+        <Link
+          to="budget"
+          aria-label={`Committed so far: ${compact(t.committed)}. Open the budget`}
+          className="group block rounded-2xl border border-stone-200/80 bg-white p-6 shadow-[0_1px_2px_rgb(28_25_23/0.04)] transition hover:border-stone-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 lg:col-span-2 dark:border-stone-800 dark:bg-stone-900 dark:hover:border-stone-700"
+        >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-sm font-medium text-stone-500">Committed so far</p>
+              <p className="flex items-center gap-1 text-sm font-medium text-stone-500">
+                Committed so far
+                <ArrowRight className="size-3.5 text-stone-300 transition group-hover:translate-x-0.5 group-hover:text-stone-500" aria-hidden />
+              </p>
               <p className="mt-1 text-5xl font-semibold tracking-tight text-stone-900 dark:text-white">{compact(t.committed)}</p>
               <p className="mt-1 text-sm text-stone-500">
                 {usedPct}% of {money(t.budget)} budget
@@ -172,13 +192,14 @@ export function Dashboard() {
               ]}
             />
           </div>
-        </Card>
+        </Link>
         <div className="grid grid-cols-2 gap-4">
-          <Stat label="Paid so far" value={compact(t.spent)} note={`${money(t.labourPaid)} wages`} />
-          <Stat label="Bills due" value={compact(t.due)} note={t.overdue > 0 ? `${compact(t.overdue)} overdue` : 'Nothing overdue'} noteTone={t.overdue > 0 ? 'bad' : 'good'} />
-          <Stat label="Cash in hand" value={compact(t.cashInHand)} note={`${compact(t.fundsReceived)} received`} noteTone={t.cashInHand < 0 ? 'bad' : 'muted'} />
+          <Stat label="Paid so far" to="expenses?status=paid" value={compact(t.spent)} note={`${money(t.labourPaid)} wages`} />
+          <Stat label="Bills due" to="expenses?status=due" value={compact(t.due)} note={t.overdue > 0 ? `${compact(t.overdue)} overdue` : 'Nothing overdue'} noteTone={t.overdue > 0 ? 'bad' : 'good'} />
+          <Stat label="Cash in hand" to="funds" value={compact(t.cashInHand)} note={`${compact(t.fundsReceived)} received`} noteTone={t.cashInHand < 0 ? 'bad' : 'muted'} />
           <Stat
             label="Progress"
+            to="schedule"
             value={`${t.progress}%`}
             note={t.costPerArea ? `${money(t.costPerArea)} / ${project.areaUnit === 'sqm' ? 'sq m' : 'sq ft'}` : 'Set built-up area for cost per sq ft'}
           />
@@ -212,13 +233,18 @@ export function Dashboard() {
                 format={money}
                 formatTick={(n) => compact(n).replace(/\.0(?=\D|$)/, '')}
                 data={data.monthly.map((m) => ({ key: m.month, label: formatMonth(m.month), value: m.amount }))}
+                onSelect={(d) => navigate(monthLink(d.key))}
               />
             ) : (
               <table className="w-full text-sm">
                 <tbody className="divide-y divide-stone-100 dark:divide-stone-800">
                   {data.monthly.map((m) => (
-                    <tr key={m.month}>
-                      <td className="py-2 text-stone-600 dark:text-stone-300">{formatMonth(m.month)}</td>
+                    <tr key={m.month} className="cursor-pointer transition-colors hover:bg-stone-50 dark:hover:bg-stone-800/40" onClick={() => navigate(monthLink(m.month))}>
+                      <td className="py-2 text-stone-600 dark:text-stone-300">
+                        <Link to={monthLink(m.month)} className="hover:underline" onClick={(e) => e.stopPropagation()}>
+                          {formatMonth(m.month)}
+                        </Link>
+                      </td>
                       <td className="tabular py-2 text-right font-medium">{money(m.amount)}</td>
                     </tr>
                   ))}
@@ -241,9 +267,14 @@ export function Dashboard() {
             />
             <ul className="mt-5 space-y-2.5">
               {top.map((c) => (
-                <li key={c.id ?? 'none'} className="flex items-center justify-between gap-3 text-sm">
-                  <span className="truncate text-stone-600 dark:text-stone-300">{c.name}</span>
-                  <span className="tabular font-medium">{compact(c.committed)}</span>
+                <li key={c.id ?? 'none'}>
+                  <Link
+                    to={categoryLink(c.id)}
+                    className="-mx-2 flex items-center justify-between gap-3 rounded-lg px-2 py-1 text-sm transition-colors hover:bg-stone-50 dark:hover:bg-stone-800/40"
+                  >
+                    <span className="truncate text-stone-600 dark:text-stone-300">{c.name}</span>
+                    <span className="tabular font-medium">{compact(c.committed)}</span>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -257,6 +288,7 @@ export function Dashboard() {
           <ul className="grid gap-x-8 gap-y-4 p-5 sm:grid-cols-2">
             {meters.map((c) => (
               <li key={c.id ?? 'none'}>
+                <Link to={categoryLink(c.id)} className="-m-2 block rounded-xl p-2 transition-colors hover:bg-stone-50 dark:hover:bg-stone-800/40">
                 <div className="mb-1.5 flex items-center justify-between gap-2 text-sm">
                   <span className="flex min-w-0 items-center gap-2 text-stone-700 dark:text-stone-300">
                     <CategoryIcon icon={c.icon} className="shrink-0 text-stone-400" />
@@ -267,6 +299,7 @@ export function Dashboard() {
                   </span>
                 </div>
                 <Meter value={c.committed} max={c.planned} />
+                </Link>
               </li>
             ))}
           </ul>

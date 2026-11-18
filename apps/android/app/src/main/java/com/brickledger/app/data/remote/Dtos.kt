@@ -99,6 +99,30 @@ data class MembersResponse(val members: List<MemberDto> = emptyList(), val invit
 @Serializable
 data class ActivityUser(val id: String, val name: String)
 
+/** A change someone else made in one of your projects. */
+@Serializable
+data class NotificationDto(
+    val id: Long,
+    val projectId: String,
+    val projectName: String = "",
+    val action: String,
+    val entityType: String,
+    val entityId: String? = null,
+    val summary: String,
+    val createdAt: String,
+    val user: ActivityUser? = null,
+    val unread: Boolean = false,
+)
+
+@Serializable
+data class NotificationsResponse(val items: List<NotificationDto> = emptyList(), val unread: Int = 0, val latestId: Long = 0)
+
+@Serializable
+data class NotificationCount(val unread: Int = 0, val latestId: Long = 0)
+
+@Serializable
+data class MarkReadRequest(val upTo: Long? = null)
+
 @Serializable
 data class ActivityDto(
     val id: Long,

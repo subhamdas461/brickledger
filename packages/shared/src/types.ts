@@ -462,6 +462,20 @@ export interface ActivityItem {
   user: { id: string; name: string } | null;
 }
 
+/** A change someone else made in one of your projects. */
+export interface NotificationItem extends ActivityItem {
+  projectId: string;
+  projectName: string;
+  unread: boolean;
+}
+
+export interface NotificationsResponse {
+  items: NotificationItem[];
+  unread: number;
+  /** Newest notification id; send it to /notifications/read to mark everything up to it as read. */
+  latestId: number;
+}
+
 // ---------------------------------------------------------------- sync
 
 export interface SyncPullResponse {

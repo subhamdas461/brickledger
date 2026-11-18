@@ -50,12 +50,15 @@ export function ColumnChart({
   format,
   formatTick,
   ariaLabel,
+  onSelect,
 }: {
   data: ColumnDatum[];
   height?: number;
   format: (n: number) => string;
   formatTick: (n: number) => string;
   ariaLabel: string;
+  /** Makes each column a link-like target (click, Enter or Space). */
+  onSelect?: (d: ColumnDatum) => void;
 }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
@@ -107,12 +110,24 @@ export function ColumnChart({
                   height={plotH}
                   fill="transparent"
                   tabIndex={0}
-                  aria-label={`${d.label}: ${format(d.value)}`}
+                  aria-label={`${d.label}: ${format(d.value)}${onSelect ? ' - open' : ''}`}
+                  role={onSelect ? 'link' : undefined}
                   onPointerEnter={() => setActive(i)}
                   onPointerLeave={() => setActive(null)}
                   onFocus={() => setActive(i)}
                   onBlur={() => setActive(null)}
-                  className="cursor-default outline-none"
+                  onClick={onSelect ? () => onSelect(d) : undefined}
+                  onKeyDown={
+                    onSelect
+                      ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onSelect(d);
+                          }
+                        }
+                      : undefined
+                  }
+                  className={onSelect ? 'cursor-pointer outline-none' : 'cursor-default outline-none'}
                 />
                 {i % labelEvery === 0 && (
                   <text x={axisW + i * band + band / 2} y={height - 6} textAnchor="middle" className="fill-[var(--ink-muted)] text-[11px]">

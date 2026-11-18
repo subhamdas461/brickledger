@@ -46,6 +46,8 @@ export const users = pgTable(
     isSuperAdmin: boolean('is_super_admin').notNull().default(false),
     bannedAt: tsz('banned_at'),
     banReason: text('ban_reason'),
+    /** Notifications are read up to this activity id (changes by others in this user's projects). */
+    notificationsSeenId: bigint('notifications_seen_id', { mode: 'number' }).notNull().default(0),
     createdAt: tsz('created_at').notNull().defaultNow(),
     updatedAt: tsz('updated_at').notNull().defaultNow(),
   },

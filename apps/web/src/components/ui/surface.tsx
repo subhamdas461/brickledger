@@ -1,5 +1,6 @@
-import { LoaderCircle } from 'lucide-react';
+import { ChevronRight, LoaderCircle } from 'lucide-react';
 import type { HTMLAttributes, ReactNode } from 'react';
+import { Link } from 'react-router';
 import { cn } from '../../lib/cn';
 
 export function Card({ className, ...rest }: HTMLAttributes<HTMLDivElement>) {
@@ -80,12 +81,29 @@ export function PageHeader({ title, description, actions, className }: { title: 
 }
 
 /** KPI tile: label (sentence case) · value (semibold, proportional figures) · optional note. */
-export function Stat({ label, value, note, noteTone, icon, className }: { label: string; value: ReactNode; note?: ReactNode; noteTone?: 'muted' | 'bad' | 'good'; icon?: ReactNode; className?: string }) {
-  return (
-    <Card className={cn('p-4', className)}>
+/** A headline number. With `to`, the whole tile opens that page (e.g. Bills due → the unpaid bills). */
+export function Stat({
+  label,
+  value,
+  note,
+  noteTone,
+  icon,
+  className,
+  to,
+}: {
+  label: string;
+  value: ReactNode;
+  note?: ReactNode;
+  noteTone?: 'muted' | 'bad' | 'good';
+  icon?: ReactNode;
+  className?: string;
+  to?: string;
+}) {
+  const body = (
+    <>
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-medium text-stone-500 dark:text-stone-400">{label}</p>
-        {icon && <span className="text-stone-400">{icon}</span>}
+        {icon ? <span className="text-stone-400">{icon}</span> : to && <ChevronRight className="size-4 text-stone-300 transition group-hover:translate-x-0.5 group-hover:text-stone-500" aria-hidden />}
       </div>
       <p className="mt-1.5 truncate text-xl font-semibold tracking-tight text-stone-900 dark:text-white">{value}</p>
       {note && (
@@ -98,8 +116,23 @@ export function Stat({ label, value, note, noteTone, icon, className }: { label:
           {note}
         </p>
       )}
-    </Card>
+    </>
   );
+  if (to) {
+    return (
+      <Link
+        to={to}
+        aria-label={`${label}: ${typeof value === 'string' ? value : ''}`.replace(/: $/, '')}
+        className={cn(
+          'group block rounded-2xl border border-stone-200/80 bg-white p-4 shadow-[0_1px_2px_rgb(28_25_23/0.04)] transition hover:border-stone-300 hover:bg-stone-50/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-stone-800 dark:bg-stone-900 dark:hover:border-stone-700 dark:hover:bg-stone-800/60',
+          className,
+        )}
+      >
+        {body}
+      </Link>
+    );
+  }
+  return <Card className={cn('p-4', className)}>{body}</Card>;
 }
 
 export function Avatar({ name, className }: { name: string; className?: string }) {

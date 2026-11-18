@@ -29,6 +29,7 @@ import {
   TriangleExclamationPoint,
   UserRound,
   Users,
+  WifiOff,
   X,
 } from 'lucide-react';
 import { Suspense, useEffect, useState, type ReactNode } from 'react';
@@ -39,6 +40,7 @@ import { cn } from '../lib/cn';
 import { useProject, useProjects } from '../lib/queries';
 import { useTheme } from '../lib/theme';
 import { Logo } from './logo';
+import { NotificationBell } from './notifications';
 import { ButtonLink, buttonClass } from './ui/button';
 import { Menu } from './ui/menu';
 import { Avatar, EmptyState, Spinner } from './ui/surface';
@@ -46,9 +48,25 @@ import { Avatar, EmptyState, Spinner } from './ui/surface';
 // ---------------------------------------------------------------- auth guard
 
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const { status } = useAuth();
+  const { status, retry } = useAuth();
   const location = useLocation();
   if (status === 'loading') return <Spinner className="min-h-dvh" />;
+  if (status === 'unreachable') {
+    return (
+      <div className="grid min-h-dvh place-items-center p-4">
+        <EmptyState
+          icon={<WifiOff />}
+          title="Can’t reach BrickLedger"
+          description="You’re still signed in. This page reconnects by itself as soon as the connection is back."
+          action={
+            <button type="button" onClick={retry} className={buttonClass('primary')}>
+              Try again
+            </button>
+          }
+        />
+      </div>
+    );
+  }
   if (status === 'anonymous') return <Navigate to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />;
   return <>{children}</>;
 }
@@ -246,10 +264,12 @@ export function UserMenu({ compact }: { compact?: boolean }) {
 function Sidebar({ pid, onNavigate }: { pid?: string; onNavigate?: () => void }) {
   return (
     <div className="flex h-full flex-col border-r border-stone-200/80 bg-stone-50/80 backdrop-blur dark:border-stone-800 dark:bg-stone-950/80">
-      <div className="flex h-16 items-center px-5">
+      <div className="flex h-16 items-center justify-between gap-2 px-5">
         <Link to="/app" onClick={onNavigate}>
           <Logo />
         </Link>
+        {/* In the phone drawer the top bar already has the bell. */}
+        {!onNavigate && <NotificationBell placement="sidebar" />}
       </div>
       <nav className="scroll-thin flex-1 overflow-y-auto px-3 pb-4">
         {pid ? (
@@ -325,6 +345,7 @@ export function AppLayout() {
         <Link to="/app" className="flex-1">
           <Logo />
         </Link>
+        <NotificationBell placement="header" />
         <UserMenu compact />
       </header>
       <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-9">

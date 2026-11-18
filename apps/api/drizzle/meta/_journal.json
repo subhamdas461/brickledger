@@ -15,6 +15,13 @@
       "when": 1794232185997,
       "tag": "0001_crazy_klaw",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795019143962,
+      "tag": "0002_notifications",
+      "breakpoints": true
     }
   ]
 }

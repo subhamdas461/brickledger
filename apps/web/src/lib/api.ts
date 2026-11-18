@@ -26,8 +26,17 @@ export class ApiError extends Error {
 }
 
 let accessToken: string | null = null;
-let refreshing: Promise<AuthResponse | null> | null = null;
+let refreshing: Promise<RefreshResult> | null = null;
 let onSessionLost: (() => void) | null = null;
+
+/**
+ * `signed-out` only when the server says the session is over (signed out elsewhere, password
+ * changed, account suspended). A dropped connection or a server hiccup is `unreachable`:
+ * the user stays signed in and the request can be retried.
+ */
+export type RefreshResult = { status: 'ok'; session: AuthResponse } | { status: 'signed-out' } | { status: 'unreachable' };
+
+const UNREACHABLE_MESSAGE = 'Can’t reach BrickLedger right now. Check your connection and try again.';
 
 export function setAccessToken(token: string | null) {
   accessToken = token;
@@ -39,20 +48,21 @@ export function onUnauthorized(handler: () => void) {
   onSessionLost = handler;
 }
 
-export function refreshSession(): Promise<AuthResponse | null> {
+export function refreshSession(): Promise<RefreshResult> {
   refreshing ??= fetch('/api/v1/auth/refresh', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: '{}',
   })
-    .then(async (res) => {
-      if (!res.ok) return null;
-      const data = (await res.json()) as AuthResponse;
-      accessToken = data.accessToken;
-      return data;
+    .then(async (res): Promise<RefreshResult> => {
+      if (res.status === 401) return { status: 'signed-out' };
+      if (!res.ok) return { status: 'unreachable' };
+      const session = (await res.json()) as AuthResponse;
+      accessToken = session.accessToken;
+      return { status: 'ok', session };
     })
-    .catch(() => null)
+    .catch((): RefreshResult => ({ status: 'unreachable' }))
     .finally(() => {
       refreshing = null;
     });
@@ -91,11 +101,20 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
       body: opts.body === undefined ? undefined : isForm ? (opts.body as FormData) : JSON.stringify(opts.body),
     });
 
-  let res = await send();
+  const sendOrExplain = async () => {
+    try {
+      return await send();
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError') throw err;
+      throw new ApiError(0, 'NETWORK_ERROR', UNREACHABLE_MESSAGE);
+    }
+  };
+  let res = await sendOrExplain();
   if (res.status === 401 && !path.startsWith('/auth/')) {
-    const session = await refreshSession();
-    if (session) res = await send();
-    else onSessionLost?.();
+    const refreshed = await refreshSession();
+    if (refreshed.status === 'ok') res = await sendOrExplain();
+    else if (refreshed.status === 'signed-out') onSessionLost?.();
+    else throw new ApiError(0, 'NETWORK_ERROR', UNREACHABLE_MESSAGE);
   }
   if (!res.ok) {
     const payload = await res.json().catch(() => null);

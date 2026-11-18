@@ -4,7 +4,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { api, onUnauthorized, refreshSession, setAccessToken } from './api';
 import { storage } from './storage';
 
-type Status = 'loading' | 'authenticated' | 'anonymous';
+/** `unreachable`: signed in, but the server can't be reached right now (retrying by itself). */
+type Status = 'loading' | 'authenticated' | 'anonymous' | 'unreachable';
 
 const SESSION_HINT = 'bl-session';
 
@@ -18,6 +19,8 @@ interface AuthContextValue {
   register(input: { name: string; email: string; password: string; company?: string; inviteToken?: string }): Promise<void>;
   logout(): Promise<void>;
   reloadMe(): Promise<void>;
+  /** Tries to reconnect now (while `unreachable`). */
+  retry(): void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -44,6 +47,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.clear();
   }, [queryClient]);
 
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+
   useEffect(() => {
     onUnauthorized(clear);
     if (!storage.get(SESSION_HINT)) {
@@ -51,18 +57,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     let cancelled = false;
-    refreshSession().then((session) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    refreshSession().then((result) => {
       if (cancelled) return;
-      if (session) accept(session);
-      else {
+      if (result.status === 'ok') accept(result.session);
+      else if (result.status === 'signed-out') {
         storage.remove(SESSION_HINT);
         setStatus('anonymous');
+      } else {
+        // No connection, or the server is busy: stay signed in and try again shortly.
+        setStatus('unreachable');
+        timer = setTimeout(retry, Math.min(30_000, 3_000 * 2 ** Math.min(attempt, 4)));
       }
     });
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
-  }, [accept, clear]);
+  }, [accept, clear, attempt, retry]);
+
+  // Back online: reconnect straight away instead of waiting for the next retry.
+  useEffect(() => {
+    if (status !== 'unreachable') return;
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, [status, retry]);
 
   const currentOrg = useMemo(() => {
     if (!me) return null;
@@ -91,8 +110,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async reloadMe() {
         accept(await api<MeResponse>('/me'));
       },
+      retry,
     }),
-    [status, me, currentOrg, accept, clear],
+    [status, me, currentOrg, accept, clear, retry],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

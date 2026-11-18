@@ -3,6 +3,7 @@ package com.brickledger.app
 import android.app.Application
 import com.brickledger.app.data.AppUpdates
 import com.brickledger.app.data.BackupInbox
+import com.brickledger.app.data.ChangeNotifications
 import com.brickledger.app.data.LocalReports
 import com.brickledger.app.data.Repository
 import com.brickledger.app.data.SessionStore
@@ -31,4 +32,5 @@ class AppContainer(app: Application) {
     val reports: LocalReports by lazy { LocalReports(app, repo) }
     val backupInbox: BackupInbox by lazy { BackupInbox(repo, session) }
     val updates: AppUpdates by lazy { AppUpdates(app, session, okHttp, appScope) }
+    val notifications: ChangeNotifications by lazy { ChangeNotifications(app, api, session) }
 }

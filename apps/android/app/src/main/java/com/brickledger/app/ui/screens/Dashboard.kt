@@ -1,6 +1,8 @@
 package com.brickledger.app.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -31,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -56,7 +59,7 @@ import com.brickledger.app.ui.theme.HeroNumber
 import com.brickledger.app.ui.theme.LocalChartColors
 
 @Composable
-fun DashboardTab(container: AppContainer, nav: ProjectNav, project: ProjectEntity) {
+fun DashboardTab(container: AppContainer, nav: ProjectNav, project: ProjectEntity, openTab: (tab: Int, expenseStatus: String?) -> Unit) {
     val flow = remember(project.id) { container.repo.dashboard(project.id) }
     val state by flow.collectAsStateWithLifecycle(initialValue = null)
     val s = state ?: return LoadingBox()
@@ -65,15 +68,16 @@ fun DashboardTab(container: AppContainer, nav: ProjectNav, project: ProjectEntit
     val compact = { v: Double -> Money.compact(v, cur) }
 
     LazyColumn(contentPadding = PaddingValues(16.dp, 4.dp, 16.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { HeroCard(s, compact, money) }
+        item { HeroCard(s, compact, money) { nav.section("budget") } }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatTile("Paid so far", compact(s.paid), Modifier.weight(1f), note = "${compact(s.labourPaid)} wages")
+                StatTile("Paid so far", compact(s.paid), Modifier.weight(1f), note = "${compact(s.labourPaid)} wages", onClick = { openTab(1, "paid") })
                 val c = LocalChartColors.current
                 StatTile(
                     "Bills due", compact(s.due), Modifier.weight(1f),
                     note = if (s.overdue > 0) "${compact(s.overdue)} overdue" else "Nothing overdue",
                     noteColor = if (s.overdue > 0) c.critical else c.good,
+                    onClick = { openTab(1, "due") },
                 )
             }
         }
@@ -83,10 +87,12 @@ fun DashboardTab(container: AppContainer, nav: ProjectNav, project: ProjectEntit
                     "Cash in hand", compact(s.cashInHand), Modifier.weight(1f),
                     note = "${compact(s.fundsReceived)} received",
                     noteColor = if (s.cashInHand < 0) LocalChartColors.current.critical else androidx.compose.ui.graphics.Color.Unspecified,
+                    onClick = { nav.section("funds") },
                 )
                 StatTile(
                     "Progress", "${s.progress}%", Modifier.weight(1f),
                     note = s.costPerArea?.let { "${money(Math.round(it).toDouble())}/${if (project.areaUnit == "sqm") "sq m" else "sq ft"}" } ?: "Add built-up area",
+                    onClick = { nav.section("schedule") },
                 )
             }
         }
@@ -108,6 +114,8 @@ fun DashboardTab(container: AppContainer, nav: ProjectNav, project: ProjectEntit
                         AlertRow(a) {
                             when (a.target) {
                                 "budget", "tasks", "issues" -> nav.section(a.target)
+                                "expenses" -> openTab(1, "due") // overdue and due-this-week payments
+                                "materials" -> openTab(3, null)
                                 else -> Unit
                             }
                         }
@@ -116,7 +124,7 @@ fun DashboardTab(container: AppContainer, nav: ProjectNav, project: ProjectEntit
             }
         }
         item {
-            SectionCard {
+            SectionCard(onClick = { openTab(1, "paid") }) {
                 CardTitle("Monthly spending", "Paid expenses per month ($cur)")
                 Spacer(Modifier.height(12.dp))
                 if (s.monthly.all { it.second == 0.0 }) {
@@ -132,7 +140,7 @@ fun DashboardTab(container: AppContainer, nav: ProjectNav, project: ProjectEntit
                 val c = LocalChartColors.current
                 val top = ranked.take(5)
                 val other = ranked.drop(5).sumOf { it.committed }
-                SectionCard {
+                SectionCard(onClick = { nav.section("budget") }) {
                     CardTitle("Where the money went", "Top categories by committed spend")
                     Spacer(Modifier.height(12.dp))
                     SegmentedBar(
@@ -144,7 +152,7 @@ fun DashboardTab(container: AppContainer, nav: ProjectNav, project: ProjectEntit
                 }
             }
             item {
-                SectionCard {
+                SectionCard(onClick = { nav.section("budget") }) {
                     CardTitle("Budget by category", "Committed vs planned") { TextButton(onClick = { nav.section("budget") }) { Text("All") } }
                     Spacer(Modifier.height(8.dp))
                     s.categories.filter { it.planned > 0 || it.committed > 0 }.sortedByDescending { it.committed }.take(6).forEach { l ->
@@ -162,16 +170,16 @@ fun DashboardTab(container: AppContainer, nav: ProjectNav, project: ProjectEntit
                 CardTitle("Today on site")
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MiniStat(Icons.Rounded.Engineering, "${s.presentToday}/${s.activeWorkers}", "Present", Modifier.weight(1f))
-                    MiniStat(Icons.Rounded.CheckCircle, "${s.openTasks}", if (s.overdueTasks > 0) "${s.overdueTasks} overdue" else "Open tasks", Modifier.weight(1f))
-                    MiniStat(Icons.Rounded.Error, "${s.openIssues}", "Issues", Modifier.weight(1f))
-                    MiniStat(Icons.Rounded.Inventory2, "${s.lowStock}", "Low stock", Modifier.weight(1f))
+                    MiniStat(Icons.Rounded.Engineering, "${s.presentToday}/${s.activeWorkers}", "Present", Modifier.weight(1f)) { openTab(2, null) }
+                    MiniStat(Icons.Rounded.CheckCircle, "${s.openTasks}", if (s.overdueTasks > 0) "${s.overdueTasks} overdue" else "Open tasks", Modifier.weight(1f)) { nav.section("tasks") }
+                    MiniStat(Icons.Rounded.Error, "${s.openIssues}", "Issues", Modifier.weight(1f)) { nav.section("issues") }
+                    MiniStat(Icons.Rounded.Inventory2, "${s.lowStock}", "Low stock", Modifier.weight(1f)) { openTab(3, null) }
                 }
             }
         }
         if (s.phases.isNotEmpty()) {
             item {
-                SectionCard {
+                SectionCard(onClick = { nav.section("schedule") }) {
                     CardTitle("Schedule", "${s.progress}% overall") { TextButton(onClick = { nav.section("schedule") }) { Text("Open") } }
                     s.phases.take(7).forEach { ph ->
                         Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp)) {
@@ -193,10 +201,10 @@ fun DashboardTab(container: AppContainer, nav: ProjectNav, project: ProjectEntit
 }
 
 @Composable
-private fun HeroCard(s: DashboardState, compact: (Double) -> String, money: (Double) -> String) {
+private fun HeroCard(s: DashboardState, compact: (Double) -> String, money: (Double) -> String, onClick: () -> Unit) {
     val c = LocalChartColors.current
     val over = s.budget > 0 && s.committed > s.budget
-    SectionCard(padding = 20.dp) {
+    SectionCard(padding = 20.dp, onClick = onClick) {
         Row(verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
                 Text("Committed so far", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -230,8 +238,8 @@ private fun QuickAction(icon: ImageVector, label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun MiniStat(icon: ImageVector, value: String, label: String, modifier: Modifier = Modifier) {
-    Column(modifier, horizontalAlignment = Alignment.Start) {
+private fun MiniStat(icon: ImageVector, value: String, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Column(modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(4.dp), horizontalAlignment = Alignment.Start) {
         Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
         Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)

@@ -14,6 +14,8 @@ import androidx.core.content.IntentCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import com.brickledger.app.data.ChangeNotifications
+import com.brickledger.app.data.OpenTarget
 import com.brickledger.app.data.remote.userMessage
 import com.brickledger.app.ui.navigation.AppNavHost
 import com.brickledger.app.ui.theme.BrickLedgerTheme
@@ -60,7 +62,15 @@ class MainActivity : ComponentActivity() {
         intent ?: return
         // A project backup opened ("Open with") or shared ("Share") from WhatsApp, Gmail, Drive, Files...
         backupUri(intent)?.let { container.backupInbox.offer(it); return }
+        openFromNotification(intent)
         handleInvite(intent)
+    }
+
+    /** A tapped "team update" notification: open that project where the change happened. */
+    private fun openFromNotification(intent: Intent) {
+        val projectId = intent.getStringExtra(ChangeNotifications.EXTRA_PROJECT) ?: return
+        container.notifications.openRequest.value = OpenTarget.of(projectId, intent.getStringExtra(ChangeNotifications.EXTRA_ENTITY))
+        intent.removeExtra(ChangeNotifications.EXTRA_PROJECT)
     }
 
     private fun backupUri(intent: Intent): Uri? = when (intent.action) {

@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.CloudDone
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Error
@@ -122,9 +123,13 @@ fun CardTitle(title: String, subtitle: String? = null, action: @Composable (() -
 }
 
 @Composable
-fun StatTile(label: String, value: String, modifier: Modifier = Modifier, note: String? = null, noteColor: Color = Color.Unspecified) {
-    SectionCard(modifier, padding = 14.dp) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+fun StatTile(label: String, value: String, modifier: Modifier = Modifier, note: String? = null, noteColor: Color = Color.Unspecified, onClick: (() -> Unit)? = null) {
+    SectionCard(modifier, onClick = onClick, padding = 14.dp) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 1)
+            // A tile that opens a page says so.
+            if (onClick != null) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(18.dp))
+        }
         Spacer(Modifier.height(4.dp))
         Text(value, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (note != null) {

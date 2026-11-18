@@ -1,10 +1,10 @@
 {
-  "versionName": "1.0.4",
-  "versionCode": 5,
-  "size": 2502948,
-  "sha256": "37e6bbf97f53b77365ac4d2f711afca0b549600d4aff1e2b34c6fcda0c28171d",
+  "versionName": "1.0.5",
+  "versionCode": 6,
+  "size": 2536012,
+  "sha256": "fc25ef9654b15ae420c9eb734710378c788a1aea649f1e3c47edeac7574f682e",
   "minAndroid": "8.0",
-  "url": "/api/v1/public/download/android?source=update&v=1.0.4",
-  "publishedAt": "2026-11-13T13:52:24.900Z",
-  "notes": "Tap any bill or photo to open it full screen: swipe between them, zoom in, and edit, replace or delete it."
+  "url": "/api/v1/public/download/android?source=update&v=1.0.5",
+  "publishedAt": "2026-11-18T17:57:10.239Z",
+  "notes": "Notifications when your team adds or changes anything, a bell with the full list, and tappable dashboard tiles (e.g. Bills due opens the unpaid bills). You also stay signed in."
 }

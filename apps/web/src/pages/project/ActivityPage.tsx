@@ -1,4 +1,4 @@
-import { formatDate } from '@brickledger/shared/web';
+import { activityWords, formatDate } from '@brickledger/shared/web';
 import { Activity } from 'lucide-react';
 import { useState } from 'react';
 import { useProjectCtx } from '../../components/layout';
@@ -37,7 +37,8 @@ export function ActivityPage() {
                   <div key={a.id} className="flex items-start gap-3 px-4 py-3">
                     <Avatar name={a.user?.name ?? '?'} className="size-7 text-[10px]" />
                     <p className="flex-1 text-sm text-stone-700 dark:text-stone-300">
-                      <span className="font-semibold text-stone-900 dark:text-white">{a.user?.name ?? 'Someone'}</span> {a.summary.charAt(0).toLowerCase() + a.summary.slice(1)}
+                      <span className="font-semibold text-stone-900 dark:text-white">{a.user?.name ?? 'Someone'}</span>
+                      {activityWords(a.summary, a.user?.name)}
                     </p>
                     <span className="tabular shrink-0 text-xs text-stone-400">{time(a.createdAt)}</span>
                   </div>

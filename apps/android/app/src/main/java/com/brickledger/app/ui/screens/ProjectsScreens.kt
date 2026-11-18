@@ -91,6 +91,7 @@ fun ProjectsScreen(
     onSettings: () -> Unit,
     onSignIn: () -> Unit,
     onRegister: () -> Unit,
+    onNotifications: () -> Unit,
 ) {
     val projects by rememberFlowState(initial = null) { container.repo.projects() }
     val profile by container.session.profile.collectAsStateWithLifecycle()
@@ -129,7 +130,10 @@ fun ProjectsScreen(
     ScreenScaffold(
         title = container.session.displayName.substringBefore(' ').let { if (it.isBlank()) "Your projects" else "Hello, $it" },
         subtitle = if (isCloud) "Your projects" else "Offline mode · saved on this phone",
-        actions = { IconButton(onClick = onSettings) { Icon(Icons.Rounded.Settings, contentDescription = "Settings") } },
+        actions = {
+            if (isCloud) NotificationBell(container, onNotifications)
+            IconButton(onClick = onSettings) { Icon(Icons.Rounded.Settings, contentDescription = "Settings") }
+        },
         floatingActionButton = {
             // This overload hides `text` from accessibility; the icon's description is the button's label.
             ExtendedFloatingActionButton(onClick = onCreate, icon = { Icon(Icons.Rounded.Add, contentDescription = "New project") }, text = { Text("New project") })

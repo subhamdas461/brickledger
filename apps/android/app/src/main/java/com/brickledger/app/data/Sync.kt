@@ -326,7 +326,11 @@ class SyncManager(
         WorkManager.getInstance(context).enqueueUniquePeriodicWork("sync-all", ExistingPeriodicWorkPolicy.KEEP, periodic)
     }
 
-    fun cancelAll() = WorkManager.getInstance(context).cancelAllWork()
+    /**
+     * Stops queued and periodic syncing (sign-out, another account). Only sync work: cancelling everything
+     * also stopped the daily reminders and team updates until the app was restarted.
+     */
+    fun cancelAll() = WorkManager.getInstance(context).cancelAllWorkByTag(SyncWorker::class.java.name)
 }
 
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {

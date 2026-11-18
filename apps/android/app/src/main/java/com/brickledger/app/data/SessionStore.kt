@@ -81,6 +81,8 @@ class SessionStore(context: Context) {
         val lastUserId = stringPreferencesKey("last_user_id")
         val updateSnooze = stringPreferencesKey("update_snooze")
         val installId = stringPreferencesKey("install_id")
+        val notifyChanges = stringPreferencesKey("notify_changes")
+        val notifiedUpTo = stringPreferencesKey("notified_up_to")
     }
 
     @Volatile var accessToken: String? = null
@@ -113,6 +115,13 @@ class SessionStore(context: Context) {
     var lastUserId: String? = null
         private set
 
+    /** Phone notifications when other members change something (Settings). On unless turned off. */
+    private val _notifyChanges = MutableStateFlow(true)
+    val notifyChanges: StateFlow<Boolean> = _notifyChanges.asStateFlow()
+    /** Newest change this phone has notified about, so each one is shown once. Null until the first check. */
+    var notifiedUpTo: Long? = null
+        private set
+
     /** "Later" on the update prompt: the versionCode, and when to ask about it again. */
     var updateSnooze: Pair<Int, Long>? = null
         private set
@@ -136,6 +145,8 @@ class SessionStore(context: Context) {
         localName = prefs[Keys.localName].orEmpty()
         lastUserId = prefs[Keys.lastUserId]
         updateSnooze = prefs[Keys.updateSnooze]?.split(":")?.let { (version, until) -> version.toInt() to until.toLong() }
+        _notifyChanges.value = prefs[Keys.notifyChanges] != "false"
+        notifiedUpTo = prefs[Keys.notifiedUpTo]?.toLongOrNull()
         _profile.value = if (refreshToken != null) prefs[Keys.profile]?.let { runCatching { AppJson.decodeFromString(Profile.serializer(), it) }.getOrNull() } else null
         _loaded.value = true
     }
@@ -204,13 +215,25 @@ class SessionStore(context: Context) {
         _profile.value = null
         lastProjectId = null
         lastUserId = null
+        notifiedUpTo = null
         store.edit {
             it.remove(Keys.access)
             it.remove(Keys.refresh)
             it.remove(Keys.profile)
             it.remove(Keys.lastProject)
             it.remove(Keys.lastUserId)
+            it.remove(Keys.notifiedUpTo)
         }
+    }
+
+    suspend fun setNotifyChanges(on: Boolean) {
+        _notifyChanges.value = on
+        store.edit { it[Keys.notifyChanges] = on.toString() }
+    }
+
+    suspend fun setNotifiedUpTo(id: Long) {
+        notifiedUpTo = id
+        store.edit { it[Keys.notifiedUpTo] = id.toString() }
     }
 
     suspend fun setBaseUrl(url: String) {

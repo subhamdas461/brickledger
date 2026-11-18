@@ -290,7 +290,7 @@ fun ActivitySection(container: AppContainer, p: ProjectEntity) {
                         Avatar(a.user?.name ?: "?", size = 28.dp)
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("${a.user?.name ?: "Someone"} ${a.summary.replaceFirstChar { it.lowercase() }}", style = MaterialTheme.typography.bodyMedium)
+                            Text("${a.user?.name ?: "Someone"}${com.brickledger.app.core.activityWords(a.summary, a.user?.name)}", style = MaterialTheme.typography.bodyMedium)
                             Text(Instant.parse(a.createdAt).atZone(ZoneId.systemDefault()).format(timeFormat), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
@@ -348,6 +348,21 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onSignIn: () -> 
                         Text(
                             "${org.name} · ${org.plan.replaceFirstChar { it.uppercase() }}${if (org.planStatus == "trialing") " trial" else ""} plan",
                             style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+            }
+            if (profile != null) {
+                val notifyChanges by container.session.notifyChanges.collectAsStateWithLifecycle()
+                SectionCard {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            CardTitle("Team updates", "A notification when someone in your projects adds or changes something. Checked about every 15 minutes.")
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        androidx.compose.material3.Switch(
+                            checked = notifyChanges,
+                            onCheckedChange = { on -> scope.launch { container.session.setNotifyChanges(on) } },
                         )
                     }
                 }

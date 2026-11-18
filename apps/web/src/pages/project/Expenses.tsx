@@ -1,6 +1,7 @@
 import { ExpenseStatuses, PaymentModes, formatDate, todayIso, type Expense } from '@brickledger/shared/web';
 import { Download, Plus, Receipt, Search } from 'lucide-react';
-import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { FormModal, type FieldDef } from '../../components/entity-form';
 import { useProjectCtx } from '../../components/layout';
@@ -9,7 +10,7 @@ import { useConfirm } from '../../components/ui/dialog';
 import { Input, Select } from '../../components/ui/form';
 import { Badge, Card, EmptyState, PageHeader } from '../../components/ui/surface';
 import { useToast } from '../../components/ui/toast';
-import { downloadFile, errorMessage } from '../../lib/api';
+import { api, downloadFile, errorMessage } from '../../lib/api';
 import { useList, useLookups, useResourceMutations, useUpload } from '../../lib/queries';
 import { Attachments, DataTable, FilterBar, PendingFilesPicker, uploadFile, useCanDelete, useMoney } from './common';
 
@@ -109,11 +110,32 @@ const PAGE = 50;
 export function Expenses() {
   const { pid, canEdit } = useProjectCtx();
   const { money } = useMoney();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const lookups = useLookups(pid);
-  const [filters, setFilters] = useState({ q: '', categoryId: '', vendorId: '', status: params.get('status') ?? '', from: '', to: '' });
+  // Links from the dashboard and notifications arrive filtered (e.g. ?status=due, ?categoryId=…, ?from=…&to=…).
+  const [filters, setFilters] = useState(() => {
+    const p = (k: string) => params.get(k) ?? '';
+    return { q: p('q'), categoryId: p('categoryId'), vendorId: p('vendorId'), status: p('status'), from: p('from'), to: p('to') };
+  });
   const [page, setPage] = useState(0);
   const [editing, setEditing] = useState<Expense | 'new' | null>(null);
+  // ?open=<id> (from a notification) opens that expense once it has loaded.
+  const openId = params.get('open');
+  const opening = useQuery({
+    queryKey: ['project', pid, 'expense', openId],
+    queryFn: () => api<Expense>(`/projects/${pid}/expenses/${openId}`),
+    enabled: Boolean(openId),
+    retry: false,
+  });
+  useEffect(() => {
+    if (!openId || opening.isLoading) return;
+    if (opening.data) setEditing(opening.data);
+    // Opened (or deleted since): drop it from the address so closing doesn't reopen it.
+    setParams((p) => {
+      p.delete('open');
+      return p;
+    }, { replace: true });
+  }, [openId, opening.isLoading, opening.data, setParams]);
   const list = useList(pid, 'expenses', { ...filters, limit: PAGE, offset: page * PAGE });
   const set = (k: keyof typeof filters, v: string) => {
     setFilters((f) => ({ ...f, [k]: v }));
@@ -146,7 +168,7 @@ export function Expenses() {
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-stone-400" />
           <Input placeholder="Search title, reference, notes…" className="pl-9" value={filters.q} onChange={(e) => set('q', e.target.value)} />
         </div>
-        <Select className="w-44" placeholder="All categories" options={lookups.options.categories} value={filters.categoryId} onChange={(e) => set('categoryId', e.target.value)} />
+        <Select className="w-44" placeholder="All categories" options={[...lookups.options.categories, { value: 'none', label: 'No category' }]} value={filters.categoryId} onChange={(e) => set('categoryId', e.target.value)} />
         <Select className="w-44" placeholder="All vendors" options={lookups.options.vendors} value={filters.vendorId} onChange={(e) => set('vendorId', e.target.value)} />
         <Select className="w-32" placeholder="Any status" options={ExpenseStatuses.list} value={filters.status} onChange={(e) => set('status', e.target.value)} />
         <Input type="date" aria-label="From date" className="w-40" value={filters.from} onChange={(e) => set('from', e.target.value)} />

@@ -3,4 +3,6 @@
     <string name="app_name">BrickLedger</string>
     <string name="notification_channel_reminders">Reminders</string>
     <string name="notification_channel_reminders_desc">Payments due, low stock and overdue tasks</string>
+    <string name="notification_channel_changes">Team updates</string>
+    <string name="notification_channel_changes_desc">When someone in your projects adds or changes something</string>
 </resources>

@@ -6,7 +6,7 @@ import { sessions, users } from '../../db/schema';
 import { hashPassword, verifyPassword } from '../../lib/crypto';
 import { badRequest, notFound, unauthorized } from '../../lib/errors';
 import { parse } from '../../lib/validate';
-import { REFRESH_COOKIE, issueSession } from '../auth/routes';
+import { REFRESH_COOKIE, issueSession, setRefreshCookie } from '../auth/routes';
 import { buildMe, deleteUserAccount } from './service';
 
 export async function accountRoutes(app: FastifyInstance) {
@@ -39,13 +39,7 @@ export async function accountRoutes(app: FastifyInstance) {
       await tx.update(sessions).set({ revokedAt: new Date() }).where(and(eq(sessions.userId, user.id), isNull(sessions.revokedAt)));
     });
     const tokens = await issueSession(app, db, user.id, req);
-    reply.setCookie(REFRESH_COOKIE, tokens.refreshToken, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: app.ctx.config.NODE_ENV === 'production',
-      path: '/api/v1/auth',
-      maxAge: app.ctx.config.REFRESH_TOKEN_TTL_DAYS * 86_400,
-    });
+    setRefreshCookie(app, reply, tokens.refreshToken);
     return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, expiresIn: tokens.expiresIn };
   });
 

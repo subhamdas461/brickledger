@@ -49,6 +49,12 @@ interface ApiService {
     @POST("api/v1/projects/{id}/invites") suspend fun invite(@Path("id") projectId: String, @Body body: InviteRequest): InviteResponse
     @POST("api/v1/invites/{token}/accept") suspend fun acceptInvite(@Path("token") token: String, @Body body: EmptyBody = EmptyBody()): AcceptInviteResponse
 
+    @GET("api/v1/notifications")
+    suspend fun notifications(@Query("limit") limit: Int = 40, @Query("after") after: Long? = null, @Query("before") before: Long? = null): NotificationsResponse
+
+    @GET("api/v1/notifications/count") suspend fun notificationCount(): NotificationCount
+    @POST("api/v1/notifications/read") suspend fun markNotificationsRead(@Body body: MarkReadRequest): NotificationCount
+
     @GET("api/v1/projects/{id}/activity")
     suspend fun activity(@Path("id") projectId: String, @Query("limit") limit: Int = 100): List<ActivityDto>
 

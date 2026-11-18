@@ -68,7 +68,7 @@ Useful scripts (from the repo root):
 
 | Command | What it does |
 |---|---|
-| `npm test` | 62 API integration tests (auth & token rotation, permissions, plan limits, sync, billing webhooks, uploads, PDF/CSV, admin panel, analytics) |
+| `npm test` | 69 API integration tests (auth & token rotation, permissions, plan limits, sync, notifications, billing webhooks, uploads, PDF/CSV, admin panel, analytics) |
 | `npm run typecheck` | TypeScript checks for every workspace |
 | `npm run build` | Production build: web (`apps/web/dist`) + bundled API (`apps/api/dist`) |
 | `npm start` | Run the built API (`SERVE_WEB=true` also serves the web app) |
@@ -114,7 +114,7 @@ The server address can also be changed on the sign-in screen (server icon). Rele
 
 **Local database upgrades.** The Room schema is versioned and exported to [`app/schemas`](apps/android/app/schemas) (version 2 added phone-only projects through an automatic migration). There is no destructive fallback, so every future schema change needs a migration - an upgrade must never drop unsynced or phone-only data.
 
-**Security.** scrypt password hashing, short-lived JWTs, rotating refresh tokens with family revocation on reuse, httpOnly SameSite cookies on web, Keystore-encrypted tokens on Android, strict CSP/HSTS via Helmet, rate-limited auth, zod validation on every input, upload type allow-list (no SVG/HTML), sandboxed file responses, CSV formula-injection guarding, and server-side role checks on every route (contributors can only delete their own entries).
+**Security.** scrypt password hashing, short-lived JWTs, rotating refresh tokens with family revocation on reuse (sessions don't expire by time: you stay signed in until you sign out, change your password or are banned; set `REFRESH_TOKEN_TTL_DAYS` to limit them), httpOnly SameSite cookies on web, Keystore-encrypted tokens on Android, strict CSP/HSTS via Helmet, rate-limited auth, zod validation on every input, upload type allow-list (no SVG/HTML), sandboxed file responses, CSV formula-injection guarding, and server-side role checks on every route (contributors can only delete their own entries).
 
 ---
 
@@ -154,8 +154,9 @@ The Android app doesn't need the server to be useful. Its Room database holds ev
 |---|---|
 | No account | **Use offline on this phone** on the sign-in screen. Projects are created on the phone (with the same budget heads, phases and materials templates) and stay there. |
 | Signed in, no internet | Existing projects keep working and sync when the connection returns. A new project is saved on the phone and marked **On this phone**. |
-| Session expires or is revoked | The app asks you to sign in again; nothing on the phone is deleted, and unsynced changes are pushed after sign-in. If a *different* person signs in, the previous user's cached cloud projects are removed (phone-only projects stay). |
+| Session is revoked (signed out elsewhere, password changed) | The app asks you to sign in again; nothing on the phone is deleted, and unsynced changes are pushed after sign-in. If a *different* person signs in, the previous user's cached cloud projects are removed (phone-only projects stay). |
 
+- **Team updates**: when someone adds or changes anything in a project you're on, you get a notification. On the web it's the bell (with optional desktop alerts while the tab is in the background); on Android it's the bell plus a phone notification, checked about every 15 minutes, which opens the project where the change happened. Turn phone notifications off in Settings → Team updates. Your own changes never notify you, and joining a project later doesn't replay its history.
 - **Reports on the phone**: for phone-only projects, the PDF cost report and the CSV exports are generated on the device.
 - **Backups**: a project's More tab → **Back up to a file** writes a zip (`backup.json` plus the photos stored on the phone) to share to Google Drive, WhatsApp or email. On the other phone, tap the file and choose **Open with → BrickLedger** (or **Share → BrickLedger**). A confirmation shows the project and what it contains, then it's added as a new phone-only project - no account needed, even on a phone that has never been set up. The file can also be picked from the sign-in screen (**Restore a backup from another phone**), an empty project list or Settings. Every id is regenerated, so a restored copy never collides with the original. Restored entries are queued for upload, so **Move to the cloud** sends all of them. Damaged, half-downloaded or foreign files are rejected with a specific message before anything is changed.
 - **Move to the cloud**: after signing in, More → **Move to the cloud** creates the project on the server, re-keys every local row to the server's id and uploads the entries and photos through the normal sync. The app then opens the cloud project.
@@ -283,4 +284,4 @@ docs/         API reference, screenshots
 - Backups of *cloud* projects include every entry but only the photos still on the phone (photos already uploaded stay on the server).
 - Wage history is calculated with each worker's *current* daily wage.
 - Conflict resolution is last-write-wins per record; field-level merging isn't implemented.
-- Not yet built: push notifications (FCM), in-app billing on Android (plans are bought on the web), Hindi/regional-language UI, and an iOS app.
+- Team updates reach phones by checking every 15 minutes (Android's shortest background interval), not instantly; instant delivery would need push notifications (FCM). Not yet built: email notifications, in-app billing on Android (plans are bought on the web), Hindi/regional-language UI, and an iOS app.

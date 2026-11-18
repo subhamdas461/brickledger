@@ -24,6 +24,7 @@ import { createBillingProvider, type BillingProvider } from './modules/billing/p
 import { billingPublicRoutes } from './modules/billing/routes';
 import { fileRoutes } from './modules/files/routes';
 import { invitePublicRoutes, memberRoutes } from './modules/members/routes';
+import { notificationRoutes } from './modules/notifications/routes';
 import { orgRoutes } from './modules/orgs/routes';
 import { projectRoutes } from './modules/projects/routes';
 import { resourceRoutes } from './modules/resources/routes';
@@ -155,6 +156,7 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
         await priv.register(resourceRoutes);
         await priv.register(syncRoutes);
         await priv.register(memberRoutes);
+        await priv.register(notificationRoutes);
         await priv.register(adminRoutes, { prefix: '/admin' });
       });
     },

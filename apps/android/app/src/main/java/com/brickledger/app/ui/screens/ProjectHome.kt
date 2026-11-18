@@ -100,13 +100,19 @@ private val tabs = listOf(
 )
 
 @Composable
-fun ProjectHomeScreen(container: AppContainer, nav: ProjectNav) {
+fun ProjectHomeScreen(container: AppContainer, nav: ProjectNav, initialTab: Int = 0) {
     val pid = nav.projectId
     val repo = container.repo
     val project by rememberFlowState(pid, initial = null) { repo.project(pid) }
     val syncState by repo.syncState.collectAsStateWithLifecycle()
     val pending by rememberFlowState(pid, initial = 0) { repo.pendingCount(pid) }
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(initialTab) }
+    // Lives here so the dashboard can open Expenses already filtered (Bills due -> unpaid bills).
+    var expenseStatus by rememberSaveable { mutableStateOf("all") }
+    val openTab = { t: Int, status: String? ->
+        status?.let { expenseStatus = it }
+        tab = t
+    }
 
     LaunchedEffect(pid) {
         container.session.setLastProject(pid)
@@ -125,7 +131,7 @@ fun ProjectHomeScreen(container: AppContainer, nav: ProjectNav) {
         onBack = { nav.back() },
         actions = {
             if (p?.isLocal == true) StatusChip("On this phone", Tone.Amber) else SyncBadge(syncState, pending) { repo.syncNow(pid) }
-            Spacer(Modifier.width(8.dp))
+            if (p?.isLocal == false && container.session.isLoggedIn) NotificationBell(container) { nav.notifications() } else Spacer(Modifier.width(8.dp))
         },
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest) {
@@ -147,8 +153,8 @@ fun ProjectHomeScreen(container: AppContainer, nav: ProjectNav) {
         Box(Modifier.padding(padding).fillMaxSize()) {
             if (p == null) LoadingBox()
             else when (tab) {
-                0 -> DashboardTab(container, nav, p)
-                1 -> ExpensesTab(container, nav, p)
+                0 -> DashboardTab(container, nav, p, openTab)
+                1 -> ExpensesTab(container, nav, p, expenseStatus) { expenseStatus = it }
                 2 -> LabourTab(container, nav, p)
                 3 -> MaterialsTab(container, nav, p)
                 else -> MoreTab(container, nav, p)
@@ -160,12 +166,11 @@ fun ProjectHomeScreen(container: AppContainer, nav: ProjectNav) {
 // ------------------------------------------------------------------ expenses
 
 @Composable
-private fun ExpensesTab(container: AppContainer, nav: ProjectNav, project: ProjectEntity) {
+private fun ExpensesTab(container: AppContainer, nav: ProjectNav, project: ProjectEntity, status: String, onStatus: (String) -> Unit) {
     val expenses by rememberFlowState(project.id, initial = null) { container.db.expenses().observe(project.id) }
     val categories by rememberFlowState(project.id, initial = emptyList()) { container.db.categories().observe(project.id) }
     val vendors by rememberFlowState(project.id, initial = emptyList()) { container.db.vendors().observe(project.id) }
     var query by rememberSaveable { mutableStateOf("") }
-    var status by rememberSaveable { mutableStateOf("all") }
     val catNames = remember(categories) { categories.associate { it.id to it.name } }
     val vendorNames = remember(vendors) { vendors.associate { it.id to it.name } }
     val list = expenses ?: return LoadingBox()
@@ -187,7 +192,7 @@ private fun ExpensesTab(container: AppContainer, nav: ProjectNav, project: Proje
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
                 listOf("all" to "All", "paid" to "Paid", "due" to "Bills due").forEach { (v, l) ->
-                    FilterChip(selected = status == v, onClick = { status = v }, label = { Text(l) })
+                    FilterChip(selected = status == v, onClick = { onStatus(v) }, label = { Text(l) })
                 }
             }
             Text(

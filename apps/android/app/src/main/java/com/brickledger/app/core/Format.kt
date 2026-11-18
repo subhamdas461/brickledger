@@ -98,3 +98,10 @@ fun wageFor(status: String, overtimeHours: Double, dailyWage: Double): Double {
     }
     return base + overtimeHours * (dailyWage / 8)
 }
+
+/**
+ * The words after the person's name in an activity line: "Ravi" + " added ₹21,000 · Cement".
+ * A summary that already starts with their name ("Ravi joined the project") isn't repeated.
+ */
+fun activityWords(summary: String, name: String?): String =
+    if (name != null && summary.startsWith(name)) summary.removePrefix(name) else " " + summary.replaceFirstChar { it.lowercase() }

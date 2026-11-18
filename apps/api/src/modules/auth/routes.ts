@@ -22,6 +22,16 @@ export const REFRESH_COOKIE = 'bl_rt';
 const COOKIE_PATH = '/api/v1/auth';
 /** A rotated refresh token may be replayed within this window (parallel tabs/requests) without tripping reuse detection. */
 const ROTATION_GRACE_MS = 30_000;
+/** Expiry for sessions without a time limit. Signing out, a password change or a ban still end them. */
+const NEVER = new Date('9999-12-31T00:00:00Z');
+/** Browsers cap cookie lifetimes at 400 days. Every refresh renews the cookie, so visiting once a year keeps you signed in. */
+const MAX_COOKIE_SECONDS = 400 * 86_400;
+
+/** REFRESH_TOKEN_TTL_DAYS=0 (the default): signed in until you sign out. */
+function sessionExpiry(app: FastifyInstance): Date {
+  const days = app.ctx.config.REFRESH_TOKEN_TTL_DAYS;
+  return days > 0 ? new Date(Date.now() + days * 86_400_000) : NEVER;
+}
 const SUSPENDED_MESSAGE = 'This account has been suspended. Contact support if you think this is a mistake.';
 
 export async function issueSession(
@@ -31,7 +41,7 @@ export async function issueSession(
   req: FastifyRequest,
   familyId: string = randomUUID(),
 ) {
-  const { config, tokens } = app.ctx;
+  const { tokens } = app.ctx;
   const refreshToken = randomToken(32);
   const [session] = await db
     .insert(sessions)
@@ -41,7 +51,7 @@ export async function issueSession(
       familyId,
       userAgent: req.headers['user-agent']?.slice(0, 300) ?? null,
       ip: req.ip,
-      expiresAt: new Date(Date.now() + config.REFRESH_TOKEN_TTL_DAYS * 86_400_000),
+      expiresAt: sessionExpiry(app),
     })
     .returning({ id: sessions.id });
   return {
@@ -52,13 +62,14 @@ export async function issueSession(
   };
 }
 
-function setRefreshCookie(app: FastifyInstance, reply: FastifyReply, token: string) {
+export function setRefreshCookie(app: FastifyInstance, reply: FastifyReply, token: string) {
+  const days = app.ctx.config.REFRESH_TOKEN_TTL_DAYS;
   reply.setCookie(REFRESH_COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
     secure: app.ctx.config.NODE_ENV === 'production',
     path: COOKIE_PATH,
-    maxAge: app.ctx.config.REFRESH_TOKEN_TTL_DAYS * 86_400,
+    maxAge: days > 0 ? Math.min(days * 86_400, MAX_COOKIE_SECONDS) : MAX_COOKIE_SECONDS,
   });
 }
 
@@ -125,9 +136,17 @@ export async function authRoutes(app: FastifyInstance) {
     const [session] = await db.select().from(sessions).where(eq(sessions.tokenHash, sha256(token))).limit(1);
     if (!session || session.expiresAt.getTime() < Date.now()) throw unauthorized('Session expired. Please sign in again.');
 
+    // The reply to this token's last refresh never arrived (a patchy site connection), so the client still holds it.
+    // If the replacement it was given has never been used, issue another instead of signing the user out.
+    // A token retired that way never reached the client, so presenting it later still counts as theft.
+    let undelivered: string | null = null;
     if (session.revokedAt) {
       const withinGrace = session.replacedById && Date.now() - session.revokedAt.getTime() < ROTATION_GRACE_MS;
-      if (!withinGrace) {
+      if (!withinGrace && session.replacedById && session.lastUsedAt) {
+        const [next] = await db.select({ id: sessions.id, revokedAt: sessions.revokedAt }).from(sessions).where(eq(sessions.id, session.replacedById)).limit(1);
+        if (next && !next.revokedAt) undelivered = next.id;
+      }
+      if (!withinGrace && !undelivered) {
         // Refresh-token reuse: someone replayed an old token. Kill the whole family.
         await db
           .update(sessions)
@@ -152,6 +171,11 @@ export async function authRoutes(app: FastifyInstance) {
           .update(sessions)
           .set({ revokedAt: new Date(), replacedById: next.sessionId, lastUsedAt: new Date() })
           .where(eq(sessions.id, session.id));
+      }
+      if (undelivered) {
+        // Retire the replacement that never arrived (no lastUsedAt: it was never presented) and point at the new one.
+        await tx.update(sessions).set({ revokedAt: new Date(), replacedById: next.sessionId }).where(eq(sessions.id, undelivered));
+        await tx.update(sessions).set({ replacedById: next.sessionId, lastUsedAt: new Date() }).where(eq(sessions.id, session.id));
       }
       return next;
     });

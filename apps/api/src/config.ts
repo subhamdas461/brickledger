@@ -36,7 +36,8 @@ const envSchema = z.object({
 
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters').default(DEV_SECRET),
   ACCESS_TOKEN_TTL_MIN: z.coerce.number().int().default(15),
-  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().default(60),
+  /** 0: sessions never expire (signed in until you sign out). A number of days limits idle sessions. */
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(0).default(0),
 
   STORAGE_DRIVER: z.enum(['local', 's3', 'vercel-blob']).default('local'),
   /** From a private Vercel Blob store. On Vercel, setting this is enough to turn Blob storage on. */

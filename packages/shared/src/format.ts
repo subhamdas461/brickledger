@@ -98,3 +98,12 @@ export function wageFor(status: string, overtimeHours: number, dailyWage: number
   const base = status === 'present' ? dailyWage : status === 'half' ? dailyWage / 2 : 0;
   return base + (overtimeHours || 0) * (dailyWage / 8);
 }
+
+/**
+ * The words after the person's name in an activity line: "Ravi" + " added ₹21,000 · Cement".
+ * A summary that already starts with their name ("Ravi joined the project") isn't repeated.
+ */
+export function activityWords(summary: string, name: string | null | undefined): string {
+  if (name && summary.startsWith(name)) return summary.slice(name.length);
+  return ` ${summary.charAt(0).toLowerCase()}${summary.slice(1)}`;
+}
