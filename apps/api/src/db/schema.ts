@@ -214,6 +214,21 @@ export const activities = pgTable(
   (t) => [index('activities_project_idx').on(t.projectId, t.id)],
 );
 
+/** Phones that receive instant notifications (Firebase Cloud Messaging tokens). */
+export const pushDevices = pgTable(
+  'push_devices',
+  {
+    token: text('token').primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    platform: text('platform').notNull().default('android'),
+    createdAt: tsz('created_at').notNull().defaultNow(),
+    lastSeenAt: tsz('last_seen_at').notNull().defaultNow(),
+  },
+  (t) => [index('push_devices_user_idx').on(t.userId)],
+);
+
 /** Processed webhook events, for idempotency. */
 export const billingEvents = pgTable('billing_events', {
   id: text('id').primaryKey(),

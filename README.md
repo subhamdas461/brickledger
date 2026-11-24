@@ -68,7 +68,7 @@ Useful scripts (from the repo root):
 
 | Command | What it does |
 |---|---|
-| `npm test` | 69 API integration tests (auth & token rotation, permissions, plan limits, sync, notifications, billing webhooks, uploads, PDF/CSV, admin panel, analytics) |
+| `npm test` | 73 API integration tests (auth & token rotation, permissions, plan limits, sync, notifications & push, billing webhooks, uploads, PDF/CSV, admin panel, analytics) |
 | `npm run typecheck` | TypeScript checks for every workspace |
 | `npm run build` | Production build: web (`apps/web/dist`) + bundled API (`apps/api/dist`) |
 | `npm start` | Run the built API (`SERVE_WEB=true` also serves the web app) |
@@ -156,7 +156,7 @@ The Android app doesn't need the server to be useful. Its Room database holds ev
 | Signed in, no internet | Existing projects keep working and sync when the connection returns. A new project is saved on the phone and marked **On this phone**. |
 | Session is revoked (signed out elsewhere, password changed) | The app asks you to sign in again; nothing on the phone is deleted, and unsynced changes are pushed after sign-in. If a *different* person signs in, the previous user's cached cloud projects are removed (phone-only projects stay). |
 
-- **Team updates**: when someone adds or changes anything in a project you're on, you get a notification. On the web it's the bell (with optional desktop alerts while the tab is in the background); on Android it's the bell plus a phone notification, checked about every 15 minutes, which opens the project where the change happened. Turn phone notifications off in Settings → Team updates. Your own changes never notify you, and joining a project later doesn't replay its history.
+- **Team updates**: when someone adds or changes anything in a project you're on, you get a notification. On the web it's the bell (with optional desktop alerts while the tab is in the background); on Android it's the bell plus a phone notification that pops up as soon as the change is saved (with [instant notifications](#instant-phone-notifications-firebase) set up; otherwise phones check every 15 minutes or so) and opens the project where the change happened. Turn phone notifications off in Settings → Team updates. Your own changes never notify you, and joining a project later doesn't replay its history.
 - **Reports on the phone**: for phone-only projects, the PDF cost report and the CSV exports are generated on the device.
 - **Backups**: a project's More tab → **Back up to a file** writes a zip (`backup.json` plus the photos stored on the phone) to share to Google Drive, WhatsApp or email. On the other phone, tap the file and choose **Open with → BrickLedger** (or **Share → BrickLedger**). A confirmation shows the project and what it contains, then it's added as a new phone-only project - no account needed, even on a phone that has never been set up. The file can also be picked from the sign-in screen (**Restore a backup from another phone**), an empty project list or Settings. Every id is regenerated, so a restored copy never collides with the original. Restored entries are queued for upload, so **Move to the cloud** sends all of them. Damaged, half-downloaded or foreign files are rejected with a specific message before anything is changed.
 - **Move to the cloud**: after signing in, More → **Move to the cloud** creates the project on the server, re-keys every local row to the server's id and uploads the entries and photos through the normal sync. The app then opens the cloud project.
@@ -255,6 +255,17 @@ The script raises the version in [`apps/android/gradle.properties`](apps/android
 
 **In-app updates:** the app reads `<server>/apk/android.json` when it opens and every few hours. If `versionCode` is higher than its own, it shows "Update available" with the notes. "Update now" downloads with progress, verifies the SHA-256 and opens Android's installer; "Later" asks again after a day (or as soon as a newer version appears), and Settings → App version always offers it. Checks fail silently when offline. Android rejects any update not signed with the same key.
 
+### Instant phone notifications (Firebase)
+
+Phones get team updates the moment a change is saved through Firebase Cloud Messaging, which is free. Without it they fall back to checking every 15 minutes, which battery saving often delays.
+
+1. [Firebase console](https://console.firebase.google.com) → **Add project** (Google Analytics not needed).
+2. **Add app → Android**, package name `com.brickledger.app` (optionally a second one, `com.brickledger.app.debug`, for instant notifications in debug builds). Download **google-services.json** to `apps/android/app/google-services.json` (git-ignored). The build reads it itself: a build whose package is in the file gets instant notifications, any other still builds and checks every 15 minutes. To try them in a debug build without adding the debug app, build it as `com.brickledger.app` with `-Pbrickledger.debugSuffix=` (uninstall the release app first). Testing needs a phone or emulator image **with Google Play** ("Google APIs" images); plain AOSP emulator images can't receive pushes.
+3. **Project settings → Service accounts → Generate new private key.** In Vercel → *Settings* → *Environment Variables*, add `FIREBASE_SERVICE_ACCOUNT` with the whole contents of that file (or its base64), for Production, then redeploy. This key is a secret: never commit it.
+4. Publish a new app version (`npm run release:android`). Admin → System then shows *Phone notifications: Instant*.
+
+The server sends one high-priority message per project to every other member's phones when a request succeeds, forgets phones Google reports as uninstalled, and the app shows it grouped with the project's other unread changes.
+
 **Google Play:** `./gradlew bundleRelease`, then upload the `.aab` in Play Console. Google Play forbids apps updating themselves, so before uploading remove the `REQUEST_INSTALL_PACKAGES` permission from `AndroidManifest.xml` and the `UpdateDialog` call in `AppNavHost.kt`; Play then delivers updates.
 
 ## Going to market - checklist
@@ -284,4 +295,4 @@ docs/         API reference, screenshots
 - Backups of *cloud* projects include every entry but only the photos still on the phone (photos already uploaded stay on the server).
 - Wage history is calculated with each worker's *current* daily wage.
 - Conflict resolution is last-write-wins per record; field-level merging isn't implemented.
-- Team updates reach phones by checking every 15 minutes (Android's shortest background interval), not instantly; instant delivery would need push notifications (FCM). Not yet built: email notifications, in-app billing on Android (plans are bought on the web), Hindi/regional-language UI, and an iOS app.
+- Without Firebase set up, team updates reach phones by checking every 15 minutes, and battery saving can delay that further. Some phones (Xiaomi, Oppo, Vivo, Realme) also hold back pushes for apps swiped away from recents: set BrickLedger's battery use to *No restrictions* / allow *Autostart*. Not yet built: email notifications, in-app billing on Android (plans are bought on the web), Hindi/regional-language UI, and an iOS app.

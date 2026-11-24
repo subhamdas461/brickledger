@@ -3,7 +3,7 @@ import { and, desc, eq, gt, gte, inArray, isNull, lt, ne, or, sql, type SQL } fr
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Executor } from '../../db/client';
-import { activities, orgMembers, projectMembers, projects, users } from '../../db/schema';
+import { activities, orgMembers, projectMembers, projects, pushDevices, users } from '../../db/schema';
 import { parse } from '../../lib/validate';
 
 /** More than this many unread shows as "99+"; counting stops there. */
@@ -65,6 +65,23 @@ const listQuery = z.object({
 
 export async function notificationRoutes(app: FastifyInstance) {
   const { db } = app.ctx;
+
+  /** A phone's push token, so changes reach it instantly. A token moves to whoever signed in on that phone last. */
+  app.post('/devices', async (req) => {
+    const { token, platform } = parse(z.object({ token: z.string().trim().min(20).max(4096), platform: z.enum(['android']).default('android') }), req.body);
+    await db
+      .insert(pushDevices)
+      .values({ token, userId: req.userId, platform })
+      .onConflictDoUpdate({ target: pushDevices.token, set: { userId: req.userId, platform, lastSeenAt: new Date() } });
+    return { ok: true, instant: app.ctx.push.enabled };
+  });
+
+  /** Signing out (or turning team updates off) on a phone. */
+  app.post('/devices/remove', async (req) => {
+    const { token } = parse(z.object({ token: z.string().trim().max(4096) }), req.body);
+    await db.delete(pushDevices).where(and(eq(pushDevices.token, token), eq(pushDevices.userId, req.userId)));
+    return { ok: true };
+  });
 
   app.get('/notifications', async (req): Promise<NotificationsResponse> => {
     const q = parse(listQuery, req.query);

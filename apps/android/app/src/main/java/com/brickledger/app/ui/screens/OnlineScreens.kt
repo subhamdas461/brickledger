@@ -357,12 +357,17 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onSignIn: () -> 
                 SectionCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            CardTitle("Team updates", "A notification when someone in your projects adds or changes something. Checked about every 15 minutes.")
+                            CardTitle("Team updates", "A notification as soon as someone in your projects adds or changes something.")
                         }
                         Spacer(Modifier.width(12.dp))
                         androidx.compose.material3.Switch(
                             checked = notifyChanges,
-                            onCheckedChange = { on -> scope.launch { container.session.setNotifyChanges(on) } },
+                            onCheckedChange = { on ->
+                                scope.launch {
+                                    container.session.setNotifyChanges(on)
+                                    if (on) container.notifications.registerDevice() else container.notifications.unregisterDevice()
+                                }
+                            },
                         )
                     }
                 }
@@ -448,7 +453,12 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onSignIn: () -> 
             message = if (offline) "Cloud projects are removed from this phone (changes not yet synced are lost). Projects saved only on this phone stay."
             else "Cloud projects are removed from this phone. Changes not yet synced will be lost.",
             confirmLabel = "Sign out",
-            onConfirm = { container.appScope.launch { container.repo.signOut() } },
+            onConfirm = {
+                container.appScope.launch {
+                    container.notifications.unregisterDevice() // while still signed in
+                    container.repo.signOut()
+                }
+            },
             onDismiss = { confirm = false },
         )
     }

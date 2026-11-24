@@ -367,6 +367,11 @@ export async function adminRoutes(app: FastifyInstance) {
         : billing.testMode
           ? { key: 'billing', level: 'info', title: 'Payments', message: `${billing.name} test mode: no real money moves, and revenue figures come from test payments. Switch to live keys to take real payments.` }
         : { key: 'billing', level: 'ok', title: 'Payments', message: `${billing.name} connected` },
+      app.ctx.push.status === 'connected'
+        ? { key: 'push', level: 'ok', title: 'Phone notifications', message: 'Instant, through Firebase Cloud Messaging' }
+        : app.ctx.push.status === 'misconfigured'
+          ? { key: 'push', level: 'warning', title: 'Phone notifications', message: 'FIREBASE_SERVICE_ACCOUNT can’t be read. Paste the whole key file Firebase gave you (the JSON), then redeploy.' }
+          : { key: 'push', level: 'info', title: 'Phone notifications', message: 'Phones check every 15 minutes or so, and battery saving can delay that. Add FIREBASE_SERVICE_ACCOUNT for instant notifications.' },
     ].filter(Boolean);
     return {
       version: VERSION,

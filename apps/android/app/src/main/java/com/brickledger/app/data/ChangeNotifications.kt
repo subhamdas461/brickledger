@@ -25,13 +25,18 @@ import com.brickledger.app.MainActivity
 import com.brickledger.app.R
 import com.brickledger.app.core.activityWords
 import com.brickledger.app.data.remote.ApiService
+import com.brickledger.app.data.remote.DeviceRequest
 import com.brickledger.app.data.remote.MarkReadRequest
 import com.brickledger.app.data.remote.NotificationDto
 import com.brickledger.app.data.remote.NotificationsResponse
+import com.google.firebase.FirebaseApp
+import com.google.firebase.messaging.FirebaseMessaging
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 /** Where a notification leads inside the app: a tab of the project screen, or one of its sections. */
 data class OpenTarget(val projectId: String, val tab: Int = 0, val section: String? = null) {
@@ -56,7 +61,8 @@ data class OpenTarget(val projectId: String, val tab: Int = 0, val section: Stri
 
 /**
  * Changes other members make in your projects: the unread count behind the in-app bell, the list,
- * and phone notifications (checked every 15 minutes in the background).
+ * and phone notifications. With Firebase set up, the server pushes each change the moment it is saved;
+ * a check every 15 minutes is the fallback (no Firebase, or a push that didn't arrive).
  */
 class ChangeNotifications(private val context: Context, private val api: ApiService, private val session: SessionStore) {
     private val _unread = MutableStateFlow(0)
@@ -82,40 +88,102 @@ class ChangeNotifications(private val context: Context, private val api: ApiServ
     }
 
     suspend fun markRead(upTo: Long) {
-        runCatching { api.markNotificationsRead(MarkReadRequest(upTo)) }.onSuccess { _unread.value = it.unread }
+        runCatching { api.markNotificationsRead(MarkReadRequest(upTo)) }.onSuccess {
+            _unread.value = it.unread
+            // Read in the app: clear them from the notification shade too.
+            if (it.unread == 0) cancelPosted()
+        }
     }
 
-    /** Posts phone notifications for changes not shown yet. The first check only notes where things stand. */
-    suspend fun notifyNew() {
+    // ------------------------------------------------------------ instant (Firebase)
+
+    /** Firebase is set up in this build (app/google-services.json was present). */
+    private val pushAvailable: Boolean get() = runCatching { FirebaseApp.getApps(context).isNotEmpty() }.getOrDefault(false)
+
+    private suspend fun pushToken(): String? = if (!pushAvailable) null else suspendCancellableCoroutine { cont ->
+        FirebaseMessaging.getInstance().token.addOnCompleteListener { task -> cont.resume(if (task.isSuccessful) task.result else null) }
+    }
+
+    /** Tells the server where to push. Called after sign-in, on start, and when Google issues a new token. */
+    suspend fun registerDevice(token: String? = null) {
+        if (!session.isLoggedIn || !session.notifyChanges.value) return
+        val t = token ?: pushToken() ?: return
+        runCatching { api.registerDevice(DeviceRequest(t)) }
+    }
+
+    /** Before signing out, or when team updates are turned off: no more pushes to this phone. */
+    suspend fun unregisterDevice() {
+        val t = pushToken() ?: return
+        runCatching { api.removeDevice(DeviceRequest(t)) }
+    }
+
+    /** A push about a change: show it right away, grouped with the project's other unread changes. */
+    suspend fun onPush(data: Map<String, String>) {
+        if (!session.loaded.value) session.load()
+        if (!session.isLoggedIn || data["to"] != session.profile.value?.user?.id) return // someone else signed in here now
+        val id = data["id"]?.toLongOrNull() ?: return
+        try {
+            notifyNew(pushedId = id)
+        } catch (e: Exception) {
+            // Couldn't fetch the details (no signal for long enough): show what the push itself says.
+            if ((session.notifiedUpTo ?: 0) >= id) return
+            session.setNotifiedUpTo(id)
+            val projectId = data["projectId"] ?: return
+            if (session.notifyChanges.value && permitted()) {
+                post(projectId, data["projectName"].orEmpty(), listOf(data["text"].orEmpty()), data["entityType"]?.ifBlank { null }, System.currentTimeMillis())
+            }
+        }
+    }
+
+    // ------------------------------------------------------------ shared by pushes and the 15-minute check
+
+    /**
+     * Shows phone notifications for changes not announced yet, one per project, listing that project's
+     * unread changes. The first check after signing in only notes where things stand.
+     */
+    suspend fun notifyNew(pushedId: Long? = null) {
         if (!session.isLoggedIn) return
-        val since = session.notifiedUpTo
+        val since = session.notifiedUpTo ?: pushedId?.minus(1)
         if (since == null) {
             val now = api.notificationCount()
             _unread.value = now.unread
             session.setNotifiedUpTo(now.latestId)
             return
         }
-        val res = api.notifications(limit = 50, after = since)
+        val res = api.notifications(limit = 50)
         _unread.value = res.unread
-        if (res.items.isEmpty()) return
-        session.setNotifiedUpTo(maxOf(since, res.items.maxOf { it.id }))
+        val fresh = res.items.filter { it.id > since }
+        if (fresh.isEmpty()) return
+        session.setNotifiedUpTo(maxOf(since, fresh.maxOf { it.id }))
         if (!session.notifyChanges.value || !permitted()) return
-        res.items.groupBy { it.projectId }.forEach { (projectId, items) -> post(projectId, items) }
+        val shown = res.items.filter { it.unread || it.id > since }.groupBy { it.projectId }
+        for (projectId in fresh.map { it.projectId }.distinct()) {
+            val items = shown[projectId].orEmpty().sortedByDescending { it.id }
+            val newest = items.first()
+            post(
+                projectId,
+                newest.projectName,
+                items.map(::line),
+                newest.entityType.takeIf { items.distinctBy { it.entityType }.size == 1 },
+                runCatching { java.time.Instant.parse(newest.createdAt).toEpochMilli() }.getOrDefault(System.currentTimeMillis()),
+            )
+        }
     }
+
+    private fun line(n: NotificationDto) = "${n.user?.name ?: "Someone"}${activityWords(n.summary, n.user?.name)}"
 
     private fun permitted() = Build.VERSION.SDK_INT < 33 ||
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
-    /** One notification per project, newest change first; a later one replaces it. */
-    private fun post(projectId: String, items: List<NotificationDto>) {
-        val newest = items.maxBy { it.id }
-        val lines = items.sortedByDescending { it.id }.map { "${it.user?.name ?: "Someone"}${activityWords(it.summary, it.user?.name)}" }
-        val title = newest.projectName.ifBlank { "BrickLedger" }
+    /** One notification per project; a newer one replaces it. */
+    private fun post(projectId: String, projectName: String, lines: List<String>, entityType: String?, whenMillis: Long) {
+        if (lines.isEmpty()) return
+        val title = projectName.ifBlank { "BrickLedger" }
         val text = if (lines.size == 1) lines.first() else "${lines.size} new changes"
         val open = Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             .putExtra(EXTRA_PROJECT, projectId)
-            .putExtra(EXTRA_ENTITY, if (items.distinctBy { it.entityType }.size == 1) newest.entityType else null)
+            .putExtra(EXTRA_ENTITY, entityType)
         val intent = PendingIntent.getActivity(context, projectId.hashCode(), open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val style = NotificationCompat.InboxStyle().setBigContentTitle(title)
         lines.take(6).forEach { style.addLine(it) }
@@ -126,29 +194,40 @@ class ChangeNotifications(private val context: Context, private val api: ApiServ
             .setContentText(text)
             .setStyle(if (lines.size == 1) NotificationCompat.BigTextStyle().bigText(text) else style)
             .setNumber(lines.size)
-            .setWhen(runCatching { java.time.Instant.parse(newest.createdAt).toEpochMilli() }.getOrDefault(System.currentTimeMillis()))
+            .setWhen(whenMillis)
             .setShowWhen(true)
+            .setCategory(NotificationCompat.CATEGORY_SOCIAL)
             .setContentIntent(intent)
             .setAutoCancel(true)
             .build()
-        runCatching { NotificationManagerCompat.from(context).notify("changes:$projectId", NOTIFICATION_ID, notification) }
+        runCatching { NotificationManagerCompat.from(context).notify(TAG_PREFIX + projectId, NOTIFICATION_ID, notification) }
+    }
+
+    private fun cancelPosted() {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        runCatching { manager.activeNotifications.filter { it.tag?.startsWith(TAG_PREFIX) == true }.forEach { manager.cancel(it.tag, it.id) } }
     }
 
     companion object {
-        const val CHANNEL = "changes"
+        /** High importance, so a change pops up on screen. (A channel's importance can't change once made, hence a new id.) */
+        const val CHANNEL = "team_updates"
+        private const val OLD_CHANNEL = "changes"
         const val EXTRA_PROJECT = "com.brickledger.app.OPEN_PROJECT"
         const val EXTRA_ENTITY = "com.brickledger.app.OPEN_ENTITY"
+        private const val TAG_PREFIX = "changes:"
         private const val NOTIFICATION_ID = 7
 
         fun createChannel(context: Context) {
-            context.getSystemService(NotificationManager::class.java).createNotificationChannel(
-                NotificationChannel(CHANNEL, context.getString(R.string.notification_channel_changes), NotificationManager.IMPORTANCE_DEFAULT).apply {
+            val manager = context.getSystemService(NotificationManager::class.java)
+            manager.deleteNotificationChannel(OLD_CHANNEL)
+            manager.createNotificationChannel(
+                NotificationChannel(CHANNEL, context.getString(R.string.notification_channel_changes), NotificationManager.IMPORTANCE_HIGH).apply {
                     description = context.getString(R.string.notification_channel_changes_desc)
                 },
             )
         }
 
-        /** One check as soon as there is a connection (after signing in: notes where things stand). */
+        /** One check as soon as there is a connection (after signing in: registers for pushes, notes where things stand). */
         fun checkSoon(context: Context) {
             val request = OneTimeWorkRequestBuilder<ChangesWorker>()
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
@@ -156,7 +235,7 @@ class ChangeNotifications(private val context: Context, private val api: ApiServ
             WorkManager.getInstance(context).enqueueUniqueWork("team-updates-now", ExistingWorkPolicy.REPLACE, request)
         }
 
-        /** Every 15 minutes (Android's shortest background interval), when there is a connection. */
+        /** The fallback: every 15 minutes (Android's shortest background interval), when there is a connection. */
         fun schedule(context: Context) {
             val request = PeriodicWorkRequestBuilder<ChangesWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
@@ -171,6 +250,7 @@ class ChangesWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         val container = (applicationContext as BrickLedgerApp).container
         if (!container.session.loaded.value) container.session.load()
         return try {
+            container.notifications.registerDevice()
             container.notifications.notifyNew()
             Result.success()
         } catch (e: java.io.IOException) {

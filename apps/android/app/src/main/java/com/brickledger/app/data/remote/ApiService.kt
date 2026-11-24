@@ -54,6 +54,8 @@ interface ApiService {
 
     @GET("api/v1/notifications/count") suspend fun notificationCount(): NotificationCount
     @POST("api/v1/notifications/read") suspend fun markNotificationsRead(@Body body: MarkReadRequest): NotificationCount
+    @POST("api/v1/devices") suspend fun registerDevice(@Body body: DeviceRequest): JsonObject
+    @POST("api/v1/devices/remove") suspend fun removeDevice(@Body body: DeviceRequest): JsonObject
 
     @GET("api/v1/projects/{id}/activity")
     suspend fun activity(@Path("id") projectId: String, @Query("limit") limit: Int = 100): List<ActivityDto>

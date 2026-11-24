@@ -63,6 +63,8 @@ const envSchema = z.object({
   STRIPE_PRICE_PRO_YEAR: z.string().default(''),
   STRIPE_PRICE_BUSINESS_MONTH: z.string().default(''),
   STRIPE_PRICE_BUSINESS_YEAR: z.string().default(''),
+  /** Firebase service-account key (JSON, or base64 of it): turns on instant phone notifications. */
+  FIREBASE_SERVICE_ACCOUNT: z.string().default(''),
   RAZORPAY_KEY_ID: z.string().default(''),
   RAZORPAY_KEY_SECRET: z.string().default(''),
   RAZORPAY_WEBHOOK_SECRET: z.string().default(''),

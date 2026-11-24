@@ -1,10 +1,10 @@
 {
-  "versionName": "1.0.5",
-  "versionCode": 6,
-  "size": 2536012,
-  "sha256": "fc25ef9654b15ae420c9eb734710378c788a1aea649f1e3c47edeac7574f682e",
+  "versionName": "1.0.6",
+  "versionCode": 7,
+  "size": 2920784,
+  "sha256": "8f0f2ec8d856d557a998a2399e57eace1cf272380f5316cf178b7f137e1b238c",
   "minAndroid": "8.0",
-  "url": "/api/v1/public/download/android?source=update&v=1.0.5",
-  "publishedAt": "2026-11-18T17:57:10.239Z",
-  "notes": "Notifications when your team adds or changes anything, a bell with the full list, and tappable dashboard tiles (e.g. Bills due opens the unpaid bills). You also stay signed in."
+  "url": "/api/v1/public/download/android?source=update&v=1.0.6",
+  "publishedAt": "2026-11-24T18:38:03.365Z",
+  "notes": "Team updates now pop up instantly on your phone when someone adds or changes something."
 }

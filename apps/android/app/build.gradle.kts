@@ -9,6 +9,26 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// Instant phone notifications (Firebase): the values in app/google-services.json for each build's own package.
+// Read here instead of by Google's plugin, which fails any build whose package isn't in the file (e.g. debug
+// before it is added in Firebase). Such a build still works; it checks for team updates every 15 minutes.
+@Suppress("UNCHECKED_CAST")
+val firebaseClients: Map<String, Map<String, String>> = file("google-services.json").takeIf { it.exists() }?.let { f ->
+    val json = groovy.json.JsonSlurper().parse(f) as Map<String, Any?>
+    val project = json["project_info"] as Map<String, Any?>
+    (json["client"] as List<Map<String, Any?>>).associate { c ->
+        val info = c["client_info"] as Map<String, Any?>
+        val pkg = (info["android_client_info"] as Map<String, Any?>)["package_name"] as String
+        pkg to mapOf(
+            "google_app_id" to info["mobilesdk_app_id"] as String,
+            "google_api_key" to ((c["api_key"] as List<Map<String, Any?>>).first()["current_key"] as String),
+            "gcm_defaultSenderId" to project["project_number"].toString(),
+            "project_id" to project["project_id"] as String,
+            "google_storage_bucket" to (project["storage_bucket"] as String? ?: ""),
+        )
+    }
+} ?: emptyMap()
+
 // Release signing: create apps/android/keystore.properties (see README) - never commit it.
 val keystoreProps = Properties().apply {
     val f = rootProject.file("keystore.properties")
@@ -49,7 +69,9 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug"
+            // -Pbrickledger.debugSuffix= builds debug as com.brickledger.app (e.g. to try instant notifications
+            // before adding the .debug app in Firebase); uninstall the release app first, it's signed differently.
+            applicationIdSuffix = (project.findProperty("brickledger.debugSuffix") as String?) ?: ".debug"
             versionNameSuffix = "-debug"
             // 10.0.2.2 is the host machine as seen from the Android emulator. Override for a phone on
             // your LAN with: ./gradlew installDebug -Pbrickledger.apiUrl=http://192.168.1.20:4000/
@@ -105,6 +127,8 @@ ksp {
 }
 
 dependencies {
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.activity.compose)
@@ -135,4 +159,11 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+}
+
+androidComponents {
+    onVariants { variant ->
+        val values = firebaseClients[variant.applicationId.get()] ?: return@onVariants
+        values.forEach { (name, value) -> variant.resValues.put(variant.makeResValueKey("string", name), com.android.build.api.variant.ResValue(value, "Firebase")) }
+    }
 }

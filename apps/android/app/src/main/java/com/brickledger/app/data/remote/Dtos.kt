@@ -123,6 +123,10 @@ data class NotificationCount(val unread: Int = 0, val latestId: Long = 0)
 @Serializable
 data class MarkReadRequest(val upTo: Long? = null)
 
+/** This phone's Firebase push token. */
+@Serializable
+data class DeviceRequest(val token: String, val platform: String = "android")
+
 @Serializable
 data class ActivityDto(
     val id: Long,

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { ActivityItem } from '@brickledger/shared';
 import { and, desc, eq, lt } from 'drizzle-orm';
 import type { Executor } from '../db/client';
@@ -12,8 +13,25 @@ export interface ActivityInput {
   summary: string;
 }
 
+/** Activity ids logged during the current request, pushed to other members' phones once it succeeds. */
+const loggedThisRequest = new AsyncLocalStorage<number[]>();
+
+/** Runs the rest of a request with its own list of logged activities (from an onRequest hook). */
+export function collectActivities(next: () => void) {
+  loggedThisRequest.run([], next);
+}
+
+/** The ids logged so far in this request (emptied, so each is pushed once). */
+export function takeLoggedActivities(): number[] {
+  return loggedThisRequest.getStore()?.splice(0) ?? [];
+}
+
 export async function logActivity(db: Executor, input: ActivityInput): Promise<void> {
-  await db.insert(activities).values({ ...input, entityId: input.entityId ?? null, summary: input.summary.slice(0, 500) });
+  const [row] = await db
+    .insert(activities)
+    .values({ ...input, entityId: input.entityId ?? null, summary: input.summary.slice(0, 500) })
+    .returning({ id: activities.id });
+  if (row) loggedThisRequest.getStore()?.push(row.id);
 }
 
 export async function listActivity(

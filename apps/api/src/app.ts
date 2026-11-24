@@ -13,7 +13,10 @@ import { createDatabase, type Database } from './db/client';
 import { TokenService } from './lib/crypto';
 import { AppError, unauthorized } from './lib/errors';
 import { createMailer, type Mailer } from './lib/mailer';
+import { createPushSender, type PushSender } from './lib/push';
 import { createStorage, type Storage } from './lib/storage';
+import { collectActivities, takeLoggedActivities } from './modules/activity';
+import { pushActivities } from './modules/notifications/push';
 import { adminRoutes } from './modules/admin/routes';
 import { createAccountGate } from './modules/admin/gate';
 import { trackingRoutes } from './modules/tracking/routes';
@@ -37,6 +40,7 @@ export interface AppOverrides {
   storage?: Storage;
   mailer?: Mailer;
   billing?: BillingProvider;
+  push?: PushSender;
 }
 
 export async function createApp(config: Config, overrides: AppOverrides = {}): Promise<FastifyInstance> {
@@ -59,6 +63,7 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
     storage: overrides.storage ?? createStorage(config),
     mailer: overrides.mailer ?? createMailer(config, app.log),
     billing: overrides.billing ?? createBillingProvider(config),
+    push: overrides.push ?? createPushSender(config),
   };
   app.decorate('ctx', ctx);
   const accountGate = createAccountGate(ctx.db);
@@ -74,6 +79,18 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
   });
   app.addHook('onClose', async () => {
     if (!overrides.database) await database.close();
+  });
+
+  // Changes made in a request reach the other members' phones as soon as it succeeds. Sent before the
+  // response (not after), because a serverless function can be frozen once it has answered.
+  app.addHook('onRequest', (_req, _reply, done) => collectActivities(done));
+  app.addHook('onSend', async (req, reply, payload) => {
+    const ids = takeLoggedActivities();
+    if (ids.length && reply.statusCode < 400 && ctx.push.enabled) {
+      const giveUp = new Promise<void>((resolve) => setTimeout(resolve, 5_000).unref());
+      await Promise.race([pushActivities(ctx, ids).catch((err) => req.log.warn({ err }, 'push notifications failed')), giveUp]);
+    }
+    return payload;
   });
 
   // ------------------------------------------------------------ platform plugins
@@ -139,6 +156,7 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
     db: (await database.ping().catch(() => false)) ? database.driver : 'down',
     storage: ctx.storage.driver,
     billing: ctx.billing.name,
+    push: ctx.push.status,
   }));
 
   await app.register(

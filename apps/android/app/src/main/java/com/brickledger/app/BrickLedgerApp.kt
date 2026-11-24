@@ -8,6 +8,7 @@ import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
 import com.brickledger.app.data.ChangeNotifications
 import com.brickledger.app.data.ReminderWorker
+import kotlinx.coroutines.launch
 
 class BrickLedgerApp : Application(), SingletonImageLoader.Factory {
     lateinit var container: AppContainer
@@ -20,6 +21,10 @@ class BrickLedgerApp : Application(), SingletonImageLoader.Factory {
         ReminderWorker.schedule(this)
         ChangeNotifications.createChannel(this)
         ChangeNotifications.schedule(this)
+        container.appScope.launch {
+            if (!container.session.loaded.value) container.session.load()
+            container.notifications.registerDevice()
+        }
     }
 
     /** Images (receipts, site photos) load through the authenticated client and are disk-cached. */

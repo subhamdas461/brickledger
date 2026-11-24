@@ -35,6 +35,10 @@ apps/android/.kotlin/
 apps/android/captures/
 apps/android/*.jks
 apps/android/keystore.properties
+# Firebase config for instant notifications (see README): kept out of the repository.
+apps/android/app/google-services.json
+# Firebase service-account keys (server secret): never commit.
+*firebase-adminsdk*.json
 *.apk
 # ...except the release published on the website's /download page (npm run release:android).
 !apps/web/public/apk/brickledger.apk
