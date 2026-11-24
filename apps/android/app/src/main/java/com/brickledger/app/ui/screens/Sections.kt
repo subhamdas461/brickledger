@@ -68,10 +68,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.brickledger.app.AppContainer
 import com.brickledger.app.core.Dates
 import com.brickledger.app.core.Money
+import com.brickledger.app.core.Units
 import com.brickledger.app.core.Vocab
 import com.brickledger.app.core.fmtQty
 import com.brickledger.app.core.todayIso
@@ -558,6 +560,7 @@ fun MaterialScreen(container: AppContainer, nav: ProjectNav, materialId: String)
     val project by rememberFlowState(nav.projectId, initial = null) { container.repo.project(nav.projectId) }
     val material by rememberFlowState(materialId, initial = null) { container.db.materials().observeOne(materialId) }
     val moves by rememberFlowState(materialId, initial = emptyList()) { container.db.movements().observeForMaterial(materialId) }
+    val view by container.session.unitView.collectAsStateWithLifecycle()
     val p = project
     val m = material
     ScreenScaffold(
@@ -569,6 +572,8 @@ fun MaterialScreen(container: AppContainer, nav: ProjectNav, materialId: String)
         if (p == null || m == null) return@ScreenScaffold LoadingBox(Modifier.padding(padding))
         val received = moves.filter { it.type == "in" }.sumOf { it.quantity }
         val used = moves.filter { it.type == "out" }.sumOf { it.quantity }
+        val u = Units.shown(m.unit, view)
+        val q = { x: Double -> Units.convert(x, m.unit, u) }
         LazyColumn(Modifier.padding(padding), contentPadding = listPadding, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 SectionCard {
@@ -576,19 +581,20 @@ fun MaterialScreen(container: AppContainer, nav: ProjectNav, materialId: String)
                         IconBadge(Icons.Rounded.CalendarMonth)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("${(received - used).fmtQty()} ${m.unit}", style = MaterialTheme.typography.headlineSmall)
-                            Text("in stock · ${received.fmtQty()} received · ${used.fmtQty()} used", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${q(received - used).fmtQty()} ${Units.short(u)}", style = MaterialTheme.typography.headlineSmall)
+                            Text("in stock · ${q(received).fmtQty()} received · ${q(used).fmtQty()} used", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     if (p.canEdit) {
                         Spacer(Modifier.height(10.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { nav.form("movement", parent = m.id, prefill = "type=in") }) { Text("Receive") }
-                            OutlinedButton(onClick = { nav.form("movement", parent = m.id, prefill = "type=out") }) { Text("Use") }
+                            OutlinedButton(onClick = { nav.form("movement", parent = m.id, prefill = "type=in;unit=$u") }) { Text("Receive") }
+                            OutlinedButton(onClick = { nav.form("movement", parent = m.id, prefill = "type=out;unit=$u") }) { Text("Use") }
                         }
                     }
                 }
             }
+            Units.family(m.unit)?.let { family -> item { UnitSwitches(container, listOf(family), view) } }
             item { Text("History", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp)) }
             if (moves.isEmpty()) item { Text("No deliveries or usage yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             items(moves, key = { it.id }) { mv ->
@@ -597,10 +603,10 @@ fun MaterialScreen(container: AppContainer, nav: ProjectNav, materialId: String)
                         StatusChip(if (mv.type == "in") "Received" else "Used", if (mv.type == "in") Tone.Green else Tone.Neutral)
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("${mv.quantity.fmtQty()} ${m.unit}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            Text("${q(mv.quantity).fmtQty()} ${Units.short(u)}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                             Text(listOfNotNull(Dates.format(mv.date), mv.notes).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        mv.rate?.let { Text("@ ${Money.format(it, p.currency)}", style = MaterialTheme.typography.bodySmall) }
+                        mv.rate?.let { Text("@ ${Money.format(Units.convertRate(it, m.unit, u), p.currency)}/${Units.short(u)}", style = MaterialTheme.typography.bodySmall) }
                     }
                 }
             }

@@ -1,10 +1,10 @@
 {
-  "versionName": "1.0.6",
-  "versionCode": 7,
+  "versionName": "1.0.7",
+  "versionCode": 8,
   "size": 2920784,
-  "sha256": "8f0f2ec8d856d557a998a2399e57eace1cf272380f5316cf178b7f137e1b238c",
+  "sha256": "9ba0f6c423248086b82ca4f8cb1fbefdf474d359618f883f6de57890e812718f",
   "minAndroid": "8.0",
-  "url": "/api/v1/public/download/android?source=update&v=1.0.6",
-  "publishedAt": "2026-11-24T18:38:03.365Z",
-  "notes": "Team updates now pop up instantly on your phone when someone adds or changes something."
+  "url": "/api/v1/public/download/android?source=update&v=1.0.7",
+  "publishedAt": "2026-11-24T19:42:33.711Z",
+  "notes": "Sand, aggregate and other materials can be shown and entered in cft, m³ or brass (and kg, quintal or ton). Instant team updates included."
 }

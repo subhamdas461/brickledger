@@ -2,6 +2,7 @@ package com.brickledger.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -66,6 +68,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.brickledger.app.AppContainer
 import com.brickledger.app.core.Dates
 import com.brickledger.app.core.Money
+import com.brickledger.app.core.Units
 import com.brickledger.app.core.Vocab
 import com.brickledger.app.core.fmtQty
 import com.brickledger.app.core.isoPlusDays
@@ -331,13 +334,37 @@ private fun LabourTab(container: AppContainer, nav: ProjectNav, project: Project
 
 // ------------------------------------------------------------------ materials
 
+/** "Volumes in: As recorded · cft · m³ · brass" (one row per kind of unit in use). Remembered on this phone. */
+@Composable
+fun UnitSwitches(container: AppContainer, families: List<String>, view: Map<String, String>) {
+    val scope = rememberCoroutineScope()
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        families.forEach { family ->
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                Text(Units.familyLabels[family].orEmpty(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(8.dp))
+                FilterChip(selected = view[family] == null, onClick = { scope.launch { container.session.setUnitView(family, null) } }, label = { Text("As recorded") })
+                Units.inFamily(family).forEach { code ->
+                    Spacer(Modifier.width(6.dp))
+                    FilterChip(selected = view[family] == code, onClick = { scope.launch { container.session.setUnitView(family, code) } }, label = { Text(Units.short(code)) })
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun MaterialsTab(container: AppContainer, nav: ProjectNav, project: ProjectEntity) {
     val lines by rememberFlowState(project.id, initial = null) { container.repo.stockLines(project.id) }
+    val view by container.session.unitView.collectAsStateWithLifecycle()
     val list = lines ?: return LoadingBox()
+    val families = list.mapNotNull { Units.family(it.material.unit) }.distinct()
     LazyColumn(contentPadding = PaddingValues(16.dp, 4.dp, 16.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (list.isEmpty()) item { EmptyView(Icons.Rounded.Inventory2, "No materials", "Track cement, steel, sand and other bulk materials.") }
+        if (families.isNotEmpty()) item { UnitSwitches(container, families, view) }
         items(list, key = { it.material.id }) { s ->
+            val u = Units.shown(s.material.unit, view)
+            val q = { x: Double -> Units.convert(x, s.material.unit, u) }
             SectionCard(onClick = { nav.material(s.material.id) }) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -348,22 +375,22 @@ private fun MaterialsTab(container: AppContainer, nav: ProjectNav, project: Proj
                 }
                 Spacer(Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.Bottom) {
-                    Text(s.stock.fmtQty(), style = MaterialTheme.typography.headlineSmall)
+                    Text(q(s.stock).fmtQty(), style = MaterialTheme.typography.headlineSmall)
                     Spacer(Modifier.width(6.dp))
-                    Text("${s.material.unit} in stock", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 3.dp))
+                    Text("${Units.short(u)} in stock", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 3.dp))
                     Spacer(Modifier.weight(1f))
                     Text(Money.compact(s.value, project.currency), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 s.material.estimatedQty?.takeIf { it > 0 }?.let { est ->
                     Spacer(Modifier.height(8.dp))
                     Meter(s.received, est, progress = true, height = 6.dp)
-                    Text("${s.received.fmtQty()} of ${est.fmtQty()} ${s.material.unit} procured", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                    Text("${q(s.received).fmtQty()} of ${q(est).fmtQty()} ${Units.short(u)} procured", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
                 }
                 if (project.canEdit) {
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { nav.form("movement", parent = s.material.id, prefill = "type=in") }) { Text("Receive") }
-                        OutlinedButton(onClick = { nav.form("movement", parent = s.material.id, prefill = "type=out") }) { Text("Use") }
+                        OutlinedButton(onClick = { nav.form("movement", parent = s.material.id, prefill = "type=in;unit=$u") }) { Text("Receive") }
+                        OutlinedButton(onClick = { nav.form("movement", parent = s.material.id, prefill = "type=out;unit=$u") }) { Text("Use") }
                     }
                 }
             }

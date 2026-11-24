@@ -10,6 +10,7 @@ import {
   formatMonth,
   formatNumber,
   type ProjectReport,
+  unitShort,
 } from '@brickledger/shared';
 import PDFDocument from 'pdfkit';
 
@@ -271,7 +272,7 @@ export function renderReportPdf(report: ProjectReport, opts: { branded: boolean;
         { label: 'Value', w: 85, align: 'right' },
       ],
       report.materials.map((m) => [
-        `${m.name} (${m.unit})`,
+        `${m.name} (${unitShort(m.unit)})`,
         formatNumber(m.received),
         formatNumber(m.used),
         formatNumber(m.stock),

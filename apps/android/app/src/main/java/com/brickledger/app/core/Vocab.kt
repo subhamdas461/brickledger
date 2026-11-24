@@ -21,7 +21,8 @@ object Vocab {
         "tiles_stone" to "Tiles & stone", "wood" to "Wood", "paint" to "Paint", "electrical" to "Electrical", "plumbing" to "Plumbing",
         "hardware" to "Hardware", "other" to "Other",
     )
-    val units = listOf("bags", "kg", "ton", "cft", "cum", "brass", "nos", "sqft", "sqm", "rft", "ltr", "trip", "box", "set").map { it to it }
+    /** Code to "m³ · cubic metre" (see Units). */
+    val units = Units.choices
     val trades = listOf(
         "mason" to "Mason", "helper" to "Helper", "carpenter" to "Carpenter", "bar_bender" to "Bar bender", "electrician" to "Electrician",
         "plumber" to "Plumber", "painter" to "Painter", "tiler" to "Tile layer", "welder" to "Welder", "supervisor" to "Supervisor", "other" to "Other",

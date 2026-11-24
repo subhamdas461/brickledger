@@ -9,6 +9,7 @@ import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import com.brickledger.app.core.Dates
 import com.brickledger.app.core.Money
+import com.brickledger.app.core.Units
 import com.brickledger.app.core.Vocab
 import com.brickledger.app.core.fmtQty
 import com.brickledger.app.core.todayIso
@@ -172,7 +173,7 @@ class LocalReports(private val context: Context, private val repo: Repository) {
             section("Materials & stock")
             table(
                 listOf(Col("Material", 180f), Col("Received", 75f, true), Col("Used", 75f, true), Col("In stock", 75f, true), Col("Value", 85f, true)),
-                stock.map { listOf("${it.material.name} (${it.material.unit})", it.received.fmtQty(), it.used.fmtQty(), it.stock.fmtQty(), money(it.value)) },
+                stock.map { listOf("${it.material.name} (${Units.short(it.material.unit)})", it.received.fmtQty(), it.used.fmtQty(), it.stock.fmtQty(), money(it.value)) },
             )
         }
         if (labour.isNotEmpty()) {
@@ -205,7 +206,7 @@ class LocalReports(private val context: Context, private val repo: Repository) {
             "vendors" -> listOf("Vendor", "Type", "Phone", "Contract", "Paid", "Due", "Balance") to
                 repo.vendorLines(p.id).first().map { listOf(it.vendor.name, Vocab.label(Vocab.vendorTypes, it.vendor.type), it.vendor.phone, it.vendor.contractAmount, it.paid, it.due, it.balance) }
             "materials" -> listOf("Material", "Unit", "Received", "Used", "In stock", "Value") to
-                repo.stockLines(p.id).first().map { listOf(it.material.name, it.material.unit, it.received, it.used, it.stock, it.value) }
+                repo.stockLines(p.id).first().map { listOf(it.material.name, Units.short(it.material.unit), it.received, it.used, it.stock, it.value) }
             "labour" -> listOf("Worker", "Trade", "Daily wage", "Present", "Half days", "OT hours", "Earned", "Paid", "Balance") to
                 repo.labourLines(p.id).first().map { listOf(it.worker.name, Vocab.label(Vocab.trades, it.worker.trade), it.worker.dailyWage, it.present, it.half, it.overtime, it.earned, it.paid, it.balance) }
             else -> {

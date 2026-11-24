@@ -12,6 +12,7 @@ import {
   Weathers,
   WorkerTrades,
   wageFor,
+  unitShort,
 } from '@brickledger/shared';
 import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 import type { Executor } from '../../db/client';
@@ -91,7 +92,7 @@ export async function buildExport(db: Executor, pid: string, key: string): Promi
         filename: 'materials-stock.csv',
         csv: toCsv(
           ['Material', 'Category', 'Unit', 'Received', 'Used', 'In stock', 'Avg rate', 'Purchase value', 'Minimum stock', 'Estimated total'],
-          rows.map((m) => [m.name, MaterialCategories.label(m.category), m.unit, m.received, m.used, m.stock, m.avgRate, m.value, m.minStock, m.estimatedQty]),
+          rows.map((m) => [m.name, MaterialCategories.label(m.category), unitShort(m.unit), m.received, m.used, m.stock, m.avgRate, m.value, m.minStock, m.estimatedQty]),
         ),
       };
     }

@@ -1,4 +1,20 @@
-import { MATERIAL_UNITS, MaterialCategories, formatDate, formatNumber, todayIso, type Material, type MaterialStock } from '@brickledger/shared/web';
+import {
+  MATERIAL_UNITS,
+  MaterialCategories,
+  UNITS,
+  compatibleUnits,
+  convertQty,
+  convertRate,
+  formatDate,
+  formatNumber,
+  todayIso,
+  unitFamily,
+  unitLabel,
+  unitShort,
+  type Material,
+  type MaterialStock,
+  type UnitFamily,
+} from '@brickledger/shared/web';
 import { ArrowDownToLine, ArrowUpFromLine, Download, Package, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Meter } from '../../components/charts';
@@ -6,13 +22,18 @@ import { FormModal, type FieldDef } from '../../components/entity-form';
 import { useProjectCtx } from '../../components/layout';
 import { Button } from '../../components/ui/button';
 import { useConfirm } from '../../components/ui/dialog';
+import { Segmented } from '../../components/ui/form';
 import { Badge, Card, EmptyState, PageHeader, Spinner } from '../../components/ui/surface';
 import { useToast } from '../../components/ui/toast';
 import { downloadFile, errorMessage } from '../../lib/api';
 import { useList, useLookups, useReport, useResourceMutations } from '../../lib/queries';
+import { round3, round4, useUnitView } from '../../lib/units';
 import { DataTable, useCanDelete, useMoney } from './common';
 
-function StockHistory({ material }: { material: Material }) {
+const FAMILY_LABEL: Record<UnitFamily, string> = { volume: 'Volumes in', weight: 'Weights in', area: 'Areas in', length: 'Lengths in' };
+
+/** Stock history, shown in `unit` (the material's own or one it converts to). */
+function StockHistory({ material, unit }: { material: Material; unit: string }) {
   const { pid } = useProjectCtx();
   const { money } = useMoney();
   const moves = useList(pid, 'movements', { materialId: material.id, limit: 200 });
@@ -29,11 +50,15 @@ function StockHistory({ material }: { material: Material }) {
               <span className="flex items-center gap-2">
                 {m.type === 'in' ? <ArrowDownToLine className="size-4 text-[var(--good)]" /> : <ArrowUpFromLine className="size-4 text-stone-400" />}
                 <span>
-                  {m.type === 'in' ? 'Received' : 'Used'} <b className="tabular">{formatNumber(m.quantity)}</b> {material.unit}
+                  {m.type === 'in' ? 'Received' : 'Used'} <b className="tabular">{formatNumber(convertQty(m.quantity, material.unit, unit))}</b> {unitShort(unit)}
                   <span className="block text-xs text-stone-500">{formatDate(m.date)}{m.notes ? ` · ${m.notes}` : ''}</span>
                 </span>
               </span>
-              {m.rate != null && <span className="tabular text-xs text-stone-500">@ {money(m.rate)}</span>}
+              {m.rate != null && (
+                <span className="tabular text-xs text-stone-500">
+                  @ {money(convertRate(m.rate, material.unit, unit))}/{unitShort(unit)}
+                </span>
+              )}
             </li>
           ))}
         </ul>
@@ -57,15 +82,26 @@ export function Materials() {
   const [moving, setMoving] = useState<{ material: Material; type: 'in' | 'out' } | null>(null);
   const existing = editing && editing !== 'new' ? editing : null;
   const canDelete = useCanDelete(existing);
+  const { prefs, setView, shown } = useUnitView();
 
   if (!materials.data) return <Spinner />;
   const stock = new Map((report.data?.materials ?? []).map((m) => [m.id, m]));
   const rows = materials.data.items.map((m) => ({ m, s: stock.get(m.id) }));
+  // Unit switches only for the kinds of units this project's materials use.
+  const families = [...new Set(materials.data.items.map((m) => unitFamily(m.unit)).filter((f): f is UnitFamily => Boolean(f)))];
+  const q = (m: Material, n: number | null | undefined) => convertQty(n ?? 0, m.unit, shown(m.unit));
 
   const materialFields: FieldDef[] = [
     { name: 'name', label: 'Material', type: 'text', required: true, span: 2, placeholder: 'e.g. Cement (OPC 53)' },
     { name: 'category', label: 'Category', type: 'select', options: MaterialCategories.list, required: true },
-    { name: 'unit', label: 'Unit', type: 'select', options: MATERIAL_UNITS.map((u) => ({ value: u, label: u })), required: true },
+    {
+      name: 'unit',
+      label: 'Unit it’s counted in',
+      type: 'select',
+      options: MATERIAL_UNITS.map((u) => ({ value: u, label: unitLabel(u) })),
+      required: true,
+      hint: existing ? 'Changing this renames the unit; quantities already recorded stay as they are. To see them in another unit (e.g. cft as m³), use the switch above the list.' : 'You can still view and enter it in matching units, e.g. sand in cft, m³ or brass.',
+    },
     { name: 'estimatedQty', label: 'Estimated total needed', type: 'number', hint: 'Optional - shows how much is procured.' },
     { name: 'minStock', label: 'Alert when stock below', type: 'number' },
     { name: 'notes', label: 'Notes', type: 'textarea', rows: 2 },
@@ -92,6 +128,22 @@ export function Materials() {
           </>
         }
       />
+      {families.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-2">
+          {families.map((f) => (
+            <div key={f} className="flex items-center gap-2 text-sm text-stone-500">
+              <span>{FAMILY_LABEL[f]}</span>
+              <Segmented
+                size="sm"
+                aria-label={FAMILY_LABEL[f]}
+                value={prefs[f] ?? ''}
+                onChange={(v) => setView(f, v)}
+                options={[{ value: '', label: 'As recorded' }, ...Object.keys(UNITS).filter((c) => UNITS[c]!.family === f).map((c) => ({ value: c, label: unitShort(c) }))]}
+              />
+            </div>
+          ))}
+        </div>
+      )}
       <Card>
         <DataTable
           rows={rows}
@@ -118,12 +170,12 @@ export function Materials() {
               align: 'right',
               cell: ({ m, s }) => (
                 <span className="font-semibold">
-                  {formatNumber(s?.stock ?? 0)} <span className="font-normal text-stone-500">{m.unit}</span>
+                  {formatNumber(q(m, s?.stock))} <span className="font-normal text-stone-500">{unitShort(shown(m.unit))}</span>
                 </span>
               ),
             },
-            { key: 'in', header: 'Received', align: 'right', className: 'hidden md:table-cell', cell: ({ s }) => formatNumber(s?.received ?? 0) },
-            { key: 'out', header: 'Used', align: 'right', className: 'hidden md:table-cell', cell: ({ s }) => formatNumber(s?.used ?? 0) },
+            { key: 'in', header: 'Received', align: 'right', className: 'hidden md:table-cell', cell: ({ m, s }) => formatNumber(q(m, s?.received)) },
+            { key: 'out', header: 'Used', align: 'right', className: 'hidden md:table-cell', cell: ({ m, s }) => formatNumber(q(m, s?.used)) },
             {
               key: 'procured',
               header: 'Procured',
@@ -138,7 +190,21 @@ export function Materials() {
                   <span className="text-xs text-stone-400">—</span>
                 ),
             },
-            { key: 'rate', header: 'Avg rate', align: 'right', className: 'hidden sm:table-cell', cell: ({ s }) => (s?.avgRate != null ? money(s.avgRate) : '—') },
+            {
+              key: 'rate',
+              header: 'Avg rate',
+              align: 'right',
+              className: 'hidden sm:table-cell',
+              cell: ({ m, s }) =>
+                s?.avgRate != null ? (
+                  <span>
+                    {money(convertRate(s.avgRate, m.unit, shown(m.unit)))}
+                    <span className="text-xs text-stone-400">/{unitShort(shown(m.unit))}</span>
+                  </span>
+                ) : (
+                  '—'
+                ),
+            },
             { key: 'value', header: 'Purchased', align: 'right', className: 'hidden sm:table-cell', cell: ({ s }) => money(s?.value ?? 0) },
             ...(canEdit
               ? [
@@ -185,7 +251,7 @@ export function Materials() {
           setEditing(null);
         }}
       >
-        {existing && <StockHistory material={existing} />}
+        {existing && <StockHistory material={existing} unit={shown(existing.unit)} />}
       </FormModal>
 
       {moving && (
@@ -194,15 +260,20 @@ export function Materials() {
           open
           onClose={() => setMoving(null)}
           title={`${moving.type === 'in' ? 'Receive' : 'Use'} ${moving.material.name}`}
-          description={`In stock: ${formatNumber(stock.get(moving.material.id)?.stock ?? 0)} ${moving.material.unit}`}
+          description={`In stock: ${formatNumber(q(moving.material, stock.get(moving.material.id)?.stock))} ${unitShort(shown(moving.material.unit))}`}
           currency={currency}
           submitLabel={moving.type === 'in' ? 'Record delivery' : 'Record usage'}
           fields={[
-            { name: 'quantity', label: `Quantity (${moving.material.unit})`, type: 'number', required: true },
+            ...(compatibleUnits(moving.material.unit).length > 1
+              ? ([
+                  { name: 'quantity', label: 'Quantity', type: 'number', required: true },
+                  { name: 'unit', label: 'Unit', type: 'select', required: true, options: compatibleUnits(moving.material.unit).map((c) => ({ value: c, label: unitLabel(c) })) },
+                ] as FieldDef[])
+              : ([{ name: 'quantity', label: `Quantity (${unitShort(moving.material.unit)})`, type: 'number', required: true }] as FieldDef[])),
             { name: 'date', label: 'Date', type: 'date', required: true },
             ...(moving.type === 'in'
               ? ([
-                  { name: 'rate', label: `Rate per ${moving.material.unit}`, type: 'money' },
+                  { name: 'rate', label: compatibleUnits(moving.material.unit).length > 1 ? 'Rate per unit (the unit above)' : `Rate per ${unitShort(moving.material.unit)}`, type: 'money' },
                   { name: 'vendorId', label: 'Supplier', type: 'select', options: lookups.options.vendors },
                   { name: 'recordExpense', label: 'Also record this purchase as an expense', type: 'checkbox', span: 2, description: 'Amount = quantity × rate. Keeps budget and stock in sync.' },
                   { name: 'categoryId', label: 'Budget category', type: 'select', options: lookups.options.categories, visible: (v) => Boolean(v.recordExpense) },
@@ -220,17 +291,21 @@ export function Materials() {
               : ([{ name: 'phaseId', label: 'Used for phase', type: 'select', options: lookups.options.phases }] as FieldDef[])),
             { name: 'notes', label: 'Notes', type: 'textarea', rows: 2 },
           ]}
-          initial={{ date: todayIso(), recordExpense: true, expenseStatus: 'paid', categoryId: guessCategory(moving.material, lookups.categories) }}
+          initial={{ date: todayIso(), unit: shown(moving.material.unit), recordExpense: true, expenseStatus: 'paid', categoryId: guessCategory(moving.material, lookups.categories) }}
           onSubmit={async (p) => {
             const m = moving.material;
+            // Entered in any matching unit (e.g. m³); stock is kept in the material's own unit (e.g. cft).
+            const entered = (p.unit as string | undefined) || m.unit;
+            const quantity = round3(convertQty(p.quantity, entered, m.unit));
+            const rate = p.rate != null && p.rate !== '' ? round4(convertRate(p.rate, entered, m.unit)) : null;
             let expenseId: string | null = null;
             if (moving.type === 'in' && p.recordExpense && p.rate && p.quantity) {
               const expense = await expMut.create.mutateAsync({
                 date: p.date,
-                title: `${m.name} - ${formatNumber(p.quantity)} ${m.unit}`,
+                title: `${m.name} - ${formatNumber(p.quantity)} ${unitShort(entered)}`,
                 amount: Math.round(p.quantity * p.rate * 100) / 100,
                 quantity: p.quantity,
-                unit: m.unit,
+                unit: unitShort(entered),
                 rate: p.rate,
                 vendorId: p.vendorId,
                 categoryId: p.categoryId,
@@ -242,9 +317,9 @@ export function Materials() {
             await moveMut.create.mutateAsync({
               materialId: m.id,
               type: moving.type,
-              quantity: p.quantity,
+              quantity,
               date: p.date,
-              rate: moving.type === 'in' ? p.rate : null,
+              rate: moving.type === 'in' ? rate : null,
               vendorId: moving.type === 'in' ? p.vendorId : null,
               phaseId: moving.type === 'out' ? p.phaseId : null,
               expenseId,

@@ -29,6 +29,13 @@
       "when": 1795542607163,
       "tag": "0003_push_devices",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795548963493,
+      "tag": "0004_stock_rate_precision",
+      "breakpoints": true
     }
   ]
 }

@@ -14,6 +14,7 @@ import {
   type ProjectReport,
   type ProjectTotals,
   type VendorBalance,
+  unitShort,
 } from '@brickledger/shared';
 import { and, asc, desc, eq, getTableColumns, isNull, sql, type SQL } from 'drizzle-orm';
 import type { Executor } from '../../db/client';
@@ -376,7 +377,7 @@ export async function computeDashboard(db: Executor, access: ProjectAccess, toda
       kind: 'low_stock',
       severity: 'warning',
       title: `Low stock: ${m.name}`,
-      detail: `${formatNumber(m.stock)} ${m.unit} left (minimum ${formatNumber(m.minStock ?? 0)}).`,
+      detail: `${formatNumber(m.stock)} ${unitShort(m.unit)} left (minimum ${formatNumber(m.minStock ?? 0)}).`,
       entityType: 'materials',
       entityId: m.id,
     });

@@ -23,7 +23,7 @@ Everything a house build needs, for owners, contractors and the family watching:
 - **Budget vs actual**: total budget split across 14 standard construction heads (permits, design, foundation, RCC, masonry, labour, roofing, doors & windows, electrical, plumbing, flooring, painting, fixtures, contingency). Planned, paid, due and remaining per head, with over-budget alerts.
 - **Expenses & bills**: amount, vendor, category, phase, payment mode (cash/UPI/bank/cheque/card), quantity × rate, GST, reference numbers, receipts (photo/PDF), *paid* vs *bill due* with due dates and overdue alerts.
 - **Vendors & contractors**: contract amount, paid, due and **balance to pay**, call from the app, payment history.
-- **Materials & stock**: deliveries and consumption, stock in hand, average rate, purchase value, procurement progress vs estimate, **low-stock alerts**. Receiving stock can create the matching expense in the same step.
+- **Materials & stock**: deliveries and consumption, stock in hand, average rate, purchase value, procurement progress vs estimate, **low-stock alerts**. Receiving stock can create the matching expense in the same step. **Units that convert**: sand and aggregate can be viewed and entered in cft, m³ or brass (steel in kg, quintal or ton; areas in sqft or m²; lengths in rft or rmt). Switch the view on the stock list; a delivery can be entered in any matching unit and is converted, with the expense keeping what was entered.
 - **Labour**: workers and trades, **one-tap daily attendance** (present / half day / absent + overtime), earned wages, payments, advances and balances.
 - **Schedule**: 14 phases from approvals to handover with planned and actual dates, progress and late flags (Gantt view on web).
 - **Tasks**: Kanban board (web) and checklist (Android) with priorities, assignees and due dates.
@@ -68,7 +68,7 @@ Useful scripts (from the repo root):
 
 | Command | What it does |
 |---|---|
-| `npm test` | 73 API integration tests (auth & token rotation, permissions, plan limits, sync, notifications & push, billing webhooks, uploads, PDF/CSV, admin panel, analytics) |
+| `npm test` | 78 API integration tests (auth & token rotation, permissions, plan limits, sync, notifications & push, billing webhooks, uploads, PDF/CSV, admin panel, analytics) |
 | `npm run typecheck` | TypeScript checks for every workspace |
 | `npm run build` | Production build: web (`apps/web/dist`) + bundled API (`apps/api/dist`) |
 | `npm start` | Run the built API (`SERVE_WEB=true` also serves the web app) |

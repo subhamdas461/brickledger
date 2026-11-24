@@ -1,4 +1,4 @@
-import { FundSources, PaymentModes, WorkerTrades, formatNumber } from '@brickledger/shared/web';
+import { FundSources, PaymentModes, WorkerTrades, formatNumber, unitShort } from '@brickledger/shared/web';
 import { FileDown, FileSpreadsheet, Lock } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
@@ -128,7 +128,7 @@ export function Reports() {
             rows={r.materials}
             rowKey={(m) => m.id}
             columns={[
-              { key: 'n', header: 'Material', cell: (m) => `${m.name} (${m.unit})` },
+              { key: 'n', header: 'Material', cell: (m) => `${m.name} (${unitShort(m.unit)})` },
               { key: 'r', header: 'Received', align: 'right', cell: (m) => formatNumber(m.received) },
               { key: 'u', header: 'Used', align: 'right', cell: (m) => formatNumber(m.used) },
               { key: 's', header: 'Stock', align: 'right', cell: (m) => formatNumber(m.stock) },

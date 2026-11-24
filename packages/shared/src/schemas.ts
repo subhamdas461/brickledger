@@ -39,6 +39,8 @@ const optText = (max = 2000) => z.preprocess(emptyToNull, z.string().trim().max(
 const money = z.number().finite().min(0).max(999_999_999_999);
 const positiveMoney = z.number().finite().positive('Must be greater than 0').max(999_999_999_999);
 const optMoney = money.nullable().optional();
+/** Price per unit of stock (stored with 4 decimals, so a little lower ceiling). */
+const optUnitRate = z.number().finite().min(0).max(9_999_999_999).nullable().optional();
 const qty = z.number().finite().positive('Must be greater than 0').max(999_999_999);
 const optQty = z.number().finite().min(0).max(999_999_999).nullable().optional();
 
@@ -175,7 +177,7 @@ export const movementSchema = z.object({
   materialId: id,
   type: z.enum(MovementTypes.values),
   quantity: qty,
-  rate: optMoney,
+  rate: optUnitRate,
   date: isoDate,
   vendorId: optId,
   phaseId: optId,

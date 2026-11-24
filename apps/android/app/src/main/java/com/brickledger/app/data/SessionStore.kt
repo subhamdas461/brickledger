@@ -83,6 +83,7 @@ class SessionStore(context: Context) {
         val installId = stringPreferencesKey("install_id")
         val notifyChanges = stringPreferencesKey("notify_changes")
         val notifiedUpTo = stringPreferencesKey("notified_up_to")
+        val unitView = stringPreferencesKey("unit_view")
     }
 
     @Volatile var accessToken: String? = null
@@ -122,6 +123,10 @@ class SessionStore(context: Context) {
     var notifiedUpTo: Long? = null
         private set
 
+    /** Which unit to show quantities in, per family ("volume" to "cum"); a family not listed shows as recorded. */
+    private val _unitView = MutableStateFlow<Map<String, String>>(emptyMap())
+    val unitView: StateFlow<Map<String, String>> = _unitView.asStateFlow()
+
     /** "Later" on the update prompt: the versionCode, and when to ask about it again. */
     var updateSnooze: Pair<Int, Long>? = null
         private set
@@ -147,6 +152,7 @@ class SessionStore(context: Context) {
         updateSnooze = prefs[Keys.updateSnooze]?.split(":")?.let { (version, until) -> version.toInt() to until.toLong() }
         _notifyChanges.value = prefs[Keys.notifyChanges] != "false"
         notifiedUpTo = prefs[Keys.notifiedUpTo]?.toLongOrNull()
+        _unitView.value = prefs[Keys.unitView].orEmpty().split(';').mapNotNull { p -> p.split('=', limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] } }.toMap()
         _profile.value = if (refreshToken != null) prefs[Keys.profile]?.let { runCatching { AppJson.decodeFromString(Profile.serializer(), it) }.getOrNull() } else null
         _loaded.value = true
     }
@@ -224,6 +230,12 @@ class SessionStore(context: Context) {
             it.remove(Keys.lastUserId)
             it.remove(Keys.notifiedUpTo)
         }
+    }
+
+    suspend fun setUnitView(family: String, unit: String?) {
+        val next = if (unit == null) _unitView.value - family else _unitView.value + (family to unit)
+        _unitView.value = next
+        store.edit { it[Keys.unitView] = next.entries.joinToString(";") { e -> "${e.key}=${e.value}" } }
     }
 
     suspend fun setNotifyChanges(on: Boolean) {

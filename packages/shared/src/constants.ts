@@ -89,9 +89,9 @@ export const MaterialCategories = vocabulary({
   other: 'Other',
 });
 
-/** Units are free text on the server; these are suggestions shown in pickers. */
+/** Units are free text on the server; these are the picker's choices (see units.ts for names and conversions). */
 export const MATERIAL_UNITS = [
-  'bags', 'kg', 'ton', 'cft', 'cum', 'brass', 'nos', 'sqft', 'sqm', 'rft', 'ltr', 'trip', 'box', 'set',
+  'bags', 'kg', 'qtl', 'ton', 'cft', 'cum', 'brass', 'nos', 'sqft', 'sqm', 'rft', 'rmt', 'ltr', 'trip', 'box', 'set',
 ] as const;
 
 export const MovementTypes = vocabulary({

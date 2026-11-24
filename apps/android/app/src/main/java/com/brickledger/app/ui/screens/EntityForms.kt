@@ -58,6 +58,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.brickledger.app.AppContainer
 import com.brickledger.app.core.LABOUR_CATEGORY
+import com.brickledger.app.core.Units
 import com.brickledger.app.core.Vocab
 import com.brickledger.app.core.fmtQty
 import com.brickledger.app.core.newId
@@ -271,7 +272,7 @@ private fun specFor(kind: String, pid: String, project: ProjectEntity, l: Lookup
         fields = listOf(
             FormField.Text("name", "Material", required = true, placeholder = "e.g. Cement (OPC 53)"),
             FormField.Choice("category", "Category", Vocab.materialCategories, required = true),
-            FormField.Choice("unit", "Unit", Vocab.units, required = true),
+            FormField.Choice("unit", "Unit it’s counted in", Vocab.units, required = true),
             FormField.Amount("estimatedQty", "Estimated total needed", money = false),
             FormField.Amount("minStock", "Alert when stock below", money = false),
             FormField.Text("notes", "Notes", multiline = true),
@@ -296,13 +297,20 @@ private fun specFor(kind: String, pid: String, project: ProjectEntity, l: Lookup
     "movement" -> {
         val incoming = (prefill["type"] ?: "in") == "in"
         val unit = material?.unit ?: ""
+        // Enter in any matching unit (sand in cft, m³ or brass); stock stays in the material's own unit.
+        val choices = Units.compatible(unit)
         FormSpec(
             noun = if (incoming) "delivery" else "usage",
             fields = buildList {
-                add(FormField.Amount("quantity", "Quantity ($unit)", required = true, money = false))
+                if (choices.size > 1) {
+                    add(FormField.Amount("quantity", "Quantity", required = true, money = false))
+                    add(FormField.Choice("unit", "Unit", choices.map { it to Units.short(it) }, required = true, chips = true))
+                } else {
+                    add(FormField.Amount("quantity", "Quantity (${Units.short(unit)})", required = true, money = false))
+                }
                 add(FormField.Date("date", "Date", required = true))
                 if (incoming) {
-                    add(FormField.Amount("rate", "Rate per $unit"))
+                    add(FormField.Amount("rate", if (choices.size > 1) "Rate per unit (the unit above)" else "Rate per ${Units.short(unit)}"))
                     add(FormField.Choice("vendorId", "Supplier", l.vendorOptions))
                     add(FormField.Toggle("recordExpense", "Also record as an expense", "Amount = quantity × rate. Keeps budget and stock in sync."))
                     add(FormField.Choice("categoryId", "Budget category", l.categoryOptions, visible = { it["recordExpense"] == "true" }))
@@ -312,23 +320,29 @@ private fun specFor(kind: String, pid: String, project: ProjectEntity, l: Lookup
                 }
                 add(FormField.Text("notes", "Notes", multiline = true))
             },
-            toValues = { mapOf("date" to todayIso(), "recordExpense" to "true", "expenseStatus" to "paid") + prefill },
+            toValues = {
+                mapOf("date" to todayIso(), "recordExpense" to "true", "expenseStatus" to "paid", "unit" to unit) +
+                    prefill.filter { (k, v) -> k != "unit" || v in choices }
+            },
             build = { v, _, id ->
                 val qty = v.num("quantity")!!
                 val rate = v.num("rate")
+                val entered = v["unit"]?.takeIf { it in choices } ?: unit
+                val stockQty = Units.round3(Units.convert(qty, entered, unit))
+                val stockRate = rate?.let { Units.round4(Units.convertRate(it, entered, unit)) }
                 val vendorId = v.str("vendorId")
                 val expense = if (incoming && v.bool("recordExpense") && rate != null && material != null) {
                     Expense(
-                        id = newId(), projectId = pid, date = v.str("date")!!, title = "${material.name} - ${qty.fmtQty()} $unit",
+                        id = newId(), projectId = pid, date = v.str("date")!!, title = "${material.name} - ${qty.fmtQty()} ${Units.short(entered)}",
                         amount = Math.round(qty * rate * 100) / 100.0, categoryId = v.str("categoryId"), vendorId = vendorId,
-                        paymentMode = "bank_transfer", status = v["expenseStatus"] ?: "paid", quantity = qty, unit = unit, rate = rate,
+                        paymentMode = "bank_transfer", status = v["expenseStatus"] ?: "paid", quantity = qty, unit = Units.short(entered), rate = rate,
                     )
                 } else null
                 listOfNotNull(
                     expense,
                     Movement(
-                        id = id, projectId = pid, materialId = material?.id ?: "", type = if (incoming) "in" else "out", quantity = qty,
-                        rate = if (incoming) rate else null, date = v.str("date")!!, vendorId = if (incoming) vendorId else null,
+                        id = id, projectId = pid, materialId = material?.id ?: "", type = if (incoming) "in" else "out", quantity = stockQty,
+                        rate = if (incoming) stockRate else null, date = v.str("date")!!, vendorId = if (incoming) vendorId else null,
                         phaseId = if (incoming) null else v.str("phaseId"), expenseId = expense?.id, notes = v.str("notes"),
                     ),
                 )

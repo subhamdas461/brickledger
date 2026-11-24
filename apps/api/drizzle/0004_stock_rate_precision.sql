@@ -1,0 +1,1 @@
+ALTER TABLE "material_movements" ALTER COLUMN "rate" SET DATA TYPE numeric(14, 4);

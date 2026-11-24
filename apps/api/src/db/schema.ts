@@ -27,6 +27,8 @@ export const syncSeq = pgSequence('sync_seq', { startWith: 1, increment: 1 });
 const tsz = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
 const money = (name: string) => numeric(name, { precision: 14, scale: 2, mode: 'number' });
 const qty = (name: string) => numeric(name, { precision: 14, scale: 3, mode: 'number' });
+/** Price per unit of stock: 4 decimals, so a rate entered per m³ survives conversion to cft and back. */
+const unitRate = (name: string) => numeric(name, { precision: 14, scale: 4, mode: 'number' });
 
 // ---------------------------------------------------------------- identity & tenancy
 
@@ -381,7 +383,7 @@ export const movements = pgTable(
     materialId: uuid('material_id').notNull(),
     type: text('type').notNull(),
     quantity: qty('quantity').notNull(),
-    rate: money('rate'),
+    rate: unitRate('rate'),
     date: date('date', { mode: 'string' }).notNull(),
     vendorId: uuid('vendor_id'),
     phaseId: uuid('phase_id'),

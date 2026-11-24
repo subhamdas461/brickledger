@@ -44,7 +44,7 @@ export function ExpenseFormModal({ expense, onClose, defaults }: { expense: Expe
     { name: 'phaseId', label: 'Construction phase', type: 'select', options: lookups.options.phases },
     { type: 'section', name: 'more', label: 'More details (optional)' },
     { name: 'quantity', label: 'Quantity', type: 'number', placeholder: '50' },
-    { name: 'unit', label: 'Unit', type: 'text', placeholder: 'bags, kg, cft, nos…' },
+    { name: 'unit', label: 'Unit', type: 'text', placeholder: 'bags, kg, cft, m³, nos…' },
     { name: 'rate', label: 'Rate per unit', type: 'money' },
     { name: 'taxAmount', label: 'Tax / GST included', type: 'money' },
     { name: 'reference', label: 'Bill / cheque / UTR no.', type: 'text' },
